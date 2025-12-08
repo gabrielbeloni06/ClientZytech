@@ -22,8 +22,7 @@ export default function LoginPage() {
       alert('Erro: ' + error.message)
       setLoading(false)
     } else {
-      alert('Login realizado! Bem-vindo à Zytech.')
-      setLoading(false)
+      router.push('/dashboard')
     }
   }
 
