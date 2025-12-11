@@ -29,6 +29,30 @@ export default function OrdersPage() {
     setLoading(false)
   }
 
+  async function handleCancelOrder(orderId: string) {
+    if (!confirm('Tem certeza que deseja cancelar este pedido?')) return;
+
+    setOrders(orders.map(o => o.id === orderId ? { ...o, status: 'canceled' } : o))
+
+    await supabase
+        .from('orders')
+        .update({ status: 'canceled' })
+        .eq('id', orderId)
+  }
+
+  async function handleAdvanceStatus(order: any) {
+    const nextStatus: any = {
+        'pending': 'preparing',
+        'preparing': 'delivery',
+        'delivery': 'finished',
+        'finished': 'finished'
+    }
+    const newStatus = nextStatus[order.status] || order.status
+    
+    setOrders(orders.map(o => o.id === order.id ? { ...o, status: newStatus } : o))
+    await supabase.from('orders').update({ status: newStatus }).eq('id', order.id)
+  }
+
   const getStatusColor = (status: string) => {
     switch(status) {
       case 'pending': return 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20'
@@ -84,7 +108,7 @@ export default function OrdersPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {orders.map((order) => (
-                <div key={order.id} className="bg-[#111] border border-[#333] rounded-xl overflow-hidden hover:border-blue-500/30 transition-all group shadow-lg">
+                <div key={order.id} className={`bg-[#111] border rounded-xl overflow-hidden transition-all group shadow-lg ${order.status === 'canceled' ? 'border-red-900/30 opacity-60' : 'border-[#333] hover:border-blue-500/30'}`}>
                     <div className="p-4 border-b border-[#222] flex justify-between items-start bg-[#151515]">
                         <div>
                             <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">
@@ -137,6 +161,28 @@ export default function OrdersPage() {
                                 R$ {Number(order.total_value).toFixed(2)}
                             </span>
                         </div>
+
+                        {order.status !== 'canceled' && order.status !== 'finished' && (
+                            <div className="grid grid-cols-2 gap-2 mt-4 opacity-70 group-hover:opacity-100 transition-opacity">
+                                <button 
+                                    onClick={() => handleAdvanceStatus(order)}
+                                    className="py-2 bg-green-900/10 text-green-500 border border-green-900/30 rounded text-xs font-bold hover:bg-green-900/30 transition-colors"
+                                >
+                                    Avançar
+                                </button>
+                                <button 
+                                    onClick={() => handleCancelOrder(order.id)}
+                                    className="py-2 bg-red-900/10 text-red-500 border border-red-900/30 rounded text-xs font-bold hover:bg-red-900/30 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                            </div>
+                        )}
+                        {order.status === 'canceled' && (
+                            <div className="mt-4 text-center py-1 text-xs font-bold text-red-500 bg-red-900/10 rounded border border-red-900/20">
+                                CANCELADO PELO OPERADOR
+                            </div>
+                        )}
                     </div>
                 </div>
             ))}
