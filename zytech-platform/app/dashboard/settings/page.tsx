@@ -45,14 +45,17 @@ export default function SettingsPage() {
       setRole(profile.role)
       setProfileForm(prev => ({ ...prev, fullName: profile.full_name || '' }))
       
-      if (profile.organizations) {
+      const p = profile as any;
+      const org = Array.isArray(p.organizations) ? p.organizations[0] : p.organizations;
+
+      if (org) {
         setCompanyForm({
-          name: profile.organizations.name,
-          type: profile.organizations.business_type
+          name: org.name || '',
+          type: org.business_type || ''
         })
         
-        if (profile.organizations.bot_config) {
-          setBotConfig({ ...botConfig, ...profile.organizations.bot_config })
+        if (org.bot_config) {
+          setBotConfig({ ...botConfig, ...org.bot_config })
         }
       }
     }
@@ -142,7 +145,6 @@ export default function SettingsPage() {
                 </button>
             )}
         </div>
-
         {activeTab === 'profile' && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="md:col-span-1 space-y-2">
