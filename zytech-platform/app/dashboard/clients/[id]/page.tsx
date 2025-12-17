@@ -177,16 +177,25 @@ export default function ClientDetailsPage() {
     setClientOrders(clientOrders.map(o => o.id === order.id ? { ...o, status: newStatus } : o))
     await supabase.from('orders').update({ status: newStatus }).eq('id', order.id)
   }
+  
   async function handleSaveBotConfig() {
     setIsSavingBot(true)
-    await supabase.from('organizations').update({
+    const { error } = await supabase.from('organizations').update({
         bot_status: botConfig.isActive, whatsapp_phone_id: botConfig.phoneId, whatsapp_access_token: botConfig.accessToken,
         bot_greeting_message: botConfig.greeting, bot_personality: botConfig.personality, ai_persona: botConfig.aiPersona,
         opening_hours: botConfig.openingHours, bot_template: botConfig.template, plan: botConfig.planLevel, ai_faq: botConfig.aiFaq
     }).eq('id', client.id)
-    alert('Salvo com sucesso!'); setClient({...client, plan: botConfig.planLevel}); setEditForm(prev => ({...prev, plan: botConfig.planLevel}))
+    
+    if (error) {
+        alert('Erro ao salvar: ' + error.message)
+    } else {
+        alert('Salvo com sucesso!'); 
+        setClient({...client, plan: botConfig.planLevel}); 
+        setEditForm(prev => ({...prev, plan: botConfig.planLevel}))
+    }
     setIsSavingBot(false)
   }
+  
   const getFilteredTemplates = () => {
       const allowedIds = TEMPLATES_BY_PLAN[botConfig.planLevel] || []
       return AVAILABLE_TEMPLATES_LIST.filter(t => allowedIds.includes(t.id))
@@ -236,7 +245,7 @@ export default function ClientDetailsPage() {
       setLoadingStats(false)
   }
 
-  function generateMockFinancialData() {  }
+  function generateMockFinancialData() {  }
   function changeReportMonth(direction: 'prev' | 'next') { const newDate = new Date(reportDate); if (direction === 'prev') newDate.setMonth(newDate.getMonth() - 1); else newDate.setMonth(newDate.getMonth() + 1); setReportDate(newDate) }
   async function fetchClientAppointments() { 
     if (!client?.id) return; setLoadingAppts(true); 
