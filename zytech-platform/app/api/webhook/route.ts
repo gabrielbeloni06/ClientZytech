@@ -16,7 +16,6 @@ export async function GET(req: NextRequest) {
   const mode = url.searchParams.get("hub.mode");
   const token = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
-
   const myVerifyToken = process.env.ZYTECH_VERIFY_TOKEN || "zytech123";
 
   if (mode === "subscribe" && token === myVerifyToken) {
@@ -28,24 +27,35 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-
     const entry = body.entry?.[0];
     const change = entry?.changes?.[0];
     const value = change?.value;
     const message = value?.messages?.[0];
 
-    if (!message) return new NextResponse("OK", { status: 200 }); 
+    if (!message) return new NextResponse("OK", { status: 200 });
 
     const businessPhoneId = value.metadata?.phone_number_id;
-    
-    const { data: org } = await supabase
+    console.log(">>> [DEBUG] ID Recebido da Meta:", businessPhoneId);
+
+    const { data: org, error } = await supabase
       .from("organizations")
-      .select("id, bot_status, whatsapp_access_token, business_type, plan")
-      .eq("whatsapp_phone_id", businessPhoneId)
+      .select("id, bot_status, whatsapp_access_token, business_type, name")
+      .eq("whatsapp_phone_id", businessPhoneId) 
       .single();
 
-    if (!org || !org.bot_status || !org.whatsapp_access_token) {
-      console.log("Bot inativo ou não configurado para este número.");
+    if (error) {
+        console.log(">>> [DEBUG] Erro ao buscar empresa:", error.message);
+    }
+
+    if (!org) {
+        console.log(">>> [DEBUG] Nenhuma empresa encontrada com este ID:", businessPhoneId);
+        return new NextResponse("OK", { status: 200 });
+    }
+
+    console.log(`>>> [DEBUG] Empresa encontrada: ${org.name} | Status Bot: ${org.bot_status}`);
+
+    if (!org.bot_status || !org.whatsapp_access_token) {
+      console.log(">>> [DEBUG] Bot desligado ou sem token.");
       return new NextResponse("OK", { status: 200 });
     }
 
@@ -55,58 +65,34 @@ export async function POST(req: NextRequest) {
 
     if (message.type === "text") {
       userText = message.text.body;
-    } 
-    else if (message.type === "audio") {
+    } else if (message.type === "audio") {
       const mediaId = message.audio.id;
       const mediaUrl = await getMediaUrl(mediaId, org.whatsapp_access_token);
-      
       if (mediaUrl) {
         const audioBuffer = await downloadMedia(mediaUrl, org.whatsapp_access_token);
         if (audioBuffer) {
            const buffer = Buffer.from(audioBuffer);
            const transcription = await transcribeAudio(buffer);
-           if (transcription) {
-             userText = transcription;
-             console.log(`[Áudio Transcrito]: ${userText}`);
-           } else {
-             await sendWhatsAppMessage(org.whatsapp_access_token, businessPhoneId, customerPhone, "Desculpe, não consegui ouvir seu áudio direito. Pode escrever?");
-             return new NextResponse("OK", { status: 200 });
-           }
+           if (transcription) userText = transcription;
+           else await sendWhatsAppMessage(org.whatsapp_access_token, businessPhoneId, customerPhone, "Não entendi o áudio.");
         }
       }
     }
 
     if (!userText) return new NextResponse("OK", { status: 200 });
 
+    let botResult;
     const history: any[] = []; 
 
-    let botResult;
-    
     if (org.business_type === 'real_estate') {
-        botResult = await botRealEstateControl({
-            orgId: org.id,
-            history,
-            text: userText,
-            customerPhone,
-            customerName
-        });
+        botResult = await botRealEstateControl({ orgId: org.id, history, text: userText, customerPhone, customerName });
     } else if (org.business_type === 'delivery') {
-        botResult = await botDeliveryControl({
-            orgId: org.id,
-            history,
-            text: userText,
-            customerPhone
-        });
+        botResult = await botDeliveryControl({ orgId: org.id, history, text: userText, customerPhone });
     } else {
-        botResult = await botSchedulingControl({
-            orgId: org.id,
-            history,
-            text: userText,
-            customerPhone
-        });
+        botResult = await botSchedulingControl({ orgId: org.id, history, text: userText, customerPhone });
     }
 
-    if (botResult.action === 'transfer') {
+    if (botResult?.action === 'transfer') {
         await sendWhatsAppMessage(org.whatsapp_access_token, businessPhoneId, customerPhone, botResult.response);
     } else {
         await sendWhatsAppMessage(org.whatsapp_access_token, businessPhoneId, customerPhone, botResult.response);
@@ -115,7 +101,7 @@ export async function POST(req: NextRequest) {
     return new NextResponse("OK", { status: 200 });
 
   } catch (error) {
-    console.error("Erro no Webhook:", error);
+    console.error("Erro Crítico no Webhook:", error);
     return new NextResponse("Internal Server Error", { status: 500 });
   }
 }
