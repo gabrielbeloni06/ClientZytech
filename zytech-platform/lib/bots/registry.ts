@@ -1,14 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
-import { botComercioBasico } from '@/lib/bots/templates/start/comercio_basico'
-import { botComercioAgendamento } from '@/lib/bots/templates/start/comercio_agendamento'
-import { botDeliveryPadrao } from '@/lib/bots/templates/start/delivery_padrao'
-import { botComercioControl } from '@/lib/bots/templates/control/comercio'
-import { botDeliveryControl as botDeliveryControlLegacy } from '@/lib/bots/templates/control/delivery'
-import { botSchedulingControl as botSchedulingBotAi } from '@/lib/bots/templates/botai/scheduling'
-import { botDeliveryControl as botDeliveryBotAi } from '@/lib/bots/templates/botai/delivery'
-import { botSchedulingControl as botSchedulingCore } from '@/lib/bots/templates/core/scheduling'
-import { botDeliveryControl as botDeliveryCore } from '@/lib/bots/templates/core/delivery'
 
+import { botRealEstateControl } from '@/lib/bots/templates/core/real_estate'
+import { botDeliveryControl } from '@/lib/bots/templates/core/delivery'
+import { botSchedulingControl } from '@/lib/bots/templates/core/scheduling'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -32,48 +26,40 @@ const createBotHandler = (handler: Function) => {
             orgId: org.id, 
             history: [],
             text, 
-            customerPhone: phone 
+            customerPhone: phone,
+            customerName: "Cliente" 
         }, sendMessage, supabase)
     }
 }
 
-// --- MAPA DE TEMPLATES (Chave -> Função) ---
-// As chaves aqui devem corresponder ao que é salvo na coluna 'bot_template' do banco
 export const BOT_TEMPLATES: Record<string, Function> = {
-    // ZyStart
-    'comercio_basico': createBotHandler(botComercioBasico),
-    'comercio_agendamento': createBotHandler(botComercioAgendamento),
-    'delivery_padrao': createBotHandler(botDeliveryPadrao),
+    // Imobiliária (NOVO)
+    'imobiliaria_basico': createBotHandler(botRealEstateControl),
 
-    // ZyControl
-    'comercio_control': createBotHandler(botComercioControl),
-    'delivery_control': createBotHandler(botDeliveryControlLegacy),
+    'scheduling_core': createBotHandler(botSchedulingControl),
+    'delivery_core': createBotHandler(botDeliveryControl),
+    'scheduling_botai': createBotHandler(botSchedulingControl),
+    'delivery_botai': createBotHandler(botDeliveryControl),     
 
-    // ZyBotAI (IA Padrão)
-    'scheduling_botai': createBotHandler(botSchedulingBotAi),
-    'delivery_botai': createBotHandler(botDeliveryBotAi),
-
-    // ZyCore (IA Personalizável)
-    'scheduling_core': createBotHandler(botSchedulingCore),
-    'delivery_core': createBotHandler(botDeliveryCore),
+    'comercio_basico': createBotHandler(botSchedulingControl), 
+    'comercio_agendamento': createBotHandler(botSchedulingControl),
+    'delivery_padrao': createBotHandler(botDeliveryControl),
+    'comercio_control': createBotHandler(botSchedulingControl),
+    'delivery_control': createBotHandler(botDeliveryControl),
 }
 
-// --- LISTA PARA O DROPDOWN (Admin) ---
 export const AVAILABLE_TEMPLATES_LIST = [
-    // ZyStart
-    { id: 'comercio_basico', label: 'Start: Comércio Menu (Estático)' },
-    { id: 'comercio_agendamento', label: 'Start: Agendamento Simples' },
-    { id: 'delivery_padrao', label: 'Start: Delivery Básico' },
+    { id: 'imobiliaria_basico', label: 'Imobiliária: Consultor IA (Vendas/Aluguel)' },
 
-    // ZyControl
-    { id: 'comercio_control', label: 'Control: Comércio Avançado' },
-    { id: 'delivery_control', label: 'Control: Delivery Flow' },
+    { id: 'scheduling_core', label: 'Core: Agendamento Premium (Persona)' },
+    { id: 'delivery_core', label: 'Core: Delivery Premium (Persona)' },
 
-    // ZyBotAI
     { id: 'scheduling_botai', label: 'BotAI: Agendamento Inteligente' },
     { id: 'delivery_botai', label: 'BotAI: Delivery Inteligente' },
 
-    // ZyCore
-    { id: 'scheduling_core', label: 'Core: Agendamento Premium (Persona)' },
-    { id: 'delivery_core', label: 'Core: Delivery Premium (Persona)' },
+    { id: 'comercio_basico', label: 'Start: Comércio Menu' },
+    { id: 'comercio_agendamento', label: 'Start: Agendamento Simples' },
+    { id: 'delivery_padrao', label: 'Start: Delivery Básico' },
+    { id: 'comercio_control', label: 'Control: Comércio Avançado' },
+    { id: 'delivery_control', label: 'Control: Delivery Flow' },
 ]
