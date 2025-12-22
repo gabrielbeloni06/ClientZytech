@@ -1,7 +1,8 @@
 import Groq from "groq-sdk";
-import { createClient } from "@supabase/supabase-js";
+import { SupabaseClient } from "@supabase/supabase-js";
 
-interface BotContext {
+// Definição clara da interface do contexto
+export interface BotContext {
   orgId: string;
   history: any[];
   text: string;
@@ -9,17 +10,24 @@ interface BotContext {
   customerName?: string;
 }
 
-export async function botRealEstateControl({ orgId, history, text, customerPhone, customerName }: BotContext) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+// Assinatura da função corrigida para aceitar 3 argumentos
+export async function botRealEstateControl(
+  context: BotContext, 
+  sendMessage: (msg: string) => Promise<void>, 
+  supabase: SupabaseClient
+) {
+  // Desestruturação do contexto
+  const { orgId, history, text, customerPhone, customerName } = context;
 
+  // Validação da API Key da IA
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
+      console.error("CRÍTICO: GROQ_API_KEY não configurada.");
       return { response: "Erro de configuração: Chave de IA não encontrada.", action: "error" };
   }
   const groq = new Groq({ apiKey });
+
+  // 1. Busca Configurações da Empresa
   const { data: orgSettings } = await supabase
     .from('organizations')
     .select('ai_persona, opening_hours, ai_faq')
@@ -28,25 +36,28 @@ export async function botRealEstateControl({ orgId, history, text, customerPhone
 
   const aiPersona = orgSettings?.ai_persona || "Você é um corretor imobiliário experiente.";
   const aiFaq = orgSettings?.ai_faq || "Sem FAQ cadastrado.";
-  const openingHours = orgSettings?.opening_hours || "Comercial";
+  const openingHours = orgSettings?.opening_hours || "Horário Comercial";
+
+  // 2. Busca Imóveis Ativos (Produto)
   const { data: properties } = await supabase
     .from('products')
     .select('id, name, price, address, neighborhood, city, state, property_link, property_details, category')
     .eq('organization_id', orgId)
-    .eq('active', true)
-    .limit(30);
+    .eq('active', true) // Garante que só pega ativos
+    .limit(20); // Limite seguro para não estourar tokens
 
   const propertiesText = properties && properties.length > 0
     ? properties.map(p => `
       [ID: ${p.id}]
       - Tipo: ${p.category} | Nome: ${p.name}
-      - Local: ${p.neighborhood || ''}, ${p.city || ''}-${p.state || ''}
+      - Local: ${p.neighborhood || ''}, ${p.city || ''}
       - Valor: R$ ${p.price}
       - Detalhes: ${p.property_details || 'N/A'}
       - Link: ${p.property_link || 'N/A'}
       `).join("\n")
-    : "Não há imóveis cadastrados no momento.";
+    : "Não há imóveis cadastrados/disponíveis no momento.";
 
+  // 3. Busca Agenda Ocupada
   const { data: busySlots } = await supabase
     .from('appointments')
     .select('appointment_date')
@@ -58,6 +69,7 @@ export async function botRealEstateControl({ orgId, history, text, customerPhone
     ? busySlots.map(s => new Date(s.appointment_date).toLocaleString('pt-BR')).join(", ")
     : "Agenda livre.";
 
+  // 4. Montagem do Prompt
   const now = new Date();
   const currentDateString = now.toLocaleDateString("pt-BR", { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
 
@@ -66,7 +78,7 @@ export async function botRealEstateControl({ orgId, history, text, customerPhone
     
     ESTADO ATUAL:
     - Data/Hora: ${currentDateString}
-    - Cliente: ${customerName || 'Visitante'}
+    - Cliente: ${customerName || 'Visitante'} (${customerPhone})
     
     BASE DE CONHECIMENTO (FAQ):
     ${aiFaq}
@@ -76,23 +88,18 @@ export async function botRealEstateControl({ orgId, history, text, customerPhone
 
     AGENDA:
     - Funcionamento: ${openingHours}
-    - Ocupados: [${busySlotsText}]
+    - Horários Ocupados (Não agendar nestes): [${busySlotsText}]
 
     SEU OBJETIVO: Vender/Alugar imóveis e agendar visitas.
 
-    ROTEIRO DE ATENDIMENTO (Siga se o cliente estiver "perdido"):
-    1. Pergunte se já conhece a imobiliária.
-    2. Se não tem imóvel em mente, faça o RAIO-X:
-       - Qual tipo? (Casa, Apartamento, Lote, Comercial)
-       - Qual finalidade? (Compra ou Aluguel)
-       - Qual localização desejada? (Bairro/Cidade)
-    3. Com essas infos, busque na CARTEIRA DE IMÓVEIS acima e sugira opções.
-    4. Se o cliente gostar, envie o Link e ofereça visita.
+    DIRETRIZES:
+    1. Se o cliente não souber o que quer, faça perguntas de qualificação (tipo, bairro, valor).
+    2. Use a lista de IMÓVEIS acima para sugerir opções reais.
+    3. Respostas curtas e objetivas (formato WhatsApp).
 
-    REGRAS CRÍTICAS:
-    1. Se o cliente perguntar algo difícil, técnico demais ou pedir para falar com humano, responda educadamente que vai chamar o especialista e USE A TAG: [TRANSFER_TO_AGENT: Motivo]
-    2. Se não encontrar imóveis no perfil, pegue os dados dele e diga que um corretor vai procurar algo exclusivo. USE A TAG: [TRANSFER_TO_AGENT: Prospecção]
-    3. Para agendar visita, use: [VISITA_CONFIRMADA: DATA_ISO|ID_IMOVEL|NOME]
+    AÇÕES (Use estas tags para executar comandos):
+    - Transferir p/ Humano: [TRANSFER_TO_AGENT: Motivo]
+    - Agendar Visita: [VISITA_CONFIRMADA: YYYY-MM-DDTHH:MM:SS|ID_IMOVEL|NOME_IMOVEL]
   `;
 
   const messages = [
@@ -102,6 +109,7 @@ export async function botRealEstateControl({ orgId, history, text, customerPhone
   ];
 
   try {
+    // 5. Chamada LLM
     const completion = await groq.chat.completions.create({
       messages: messages as any,
       model: "llama-3.3-70b-versatile",
@@ -111,48 +119,59 @@ export async function botRealEstateControl({ orgId, history, text, customerPhone
 
     const aiResponse = completion.choices[0]?.message?.content || "";
 
+    // 6. Processamento de Tags de Ação
+
+    // Caso A: Transferência
     const transferMatch = aiResponse.match(/\[TRANSFER_TO_AGENT(?::\s*(.*?))?\]/);
     if (transferMatch || aiResponse.includes("[TRANSFER_TO_AGENT]")) {
-        const reason = transferMatch ? transferMatch[1] : "Solicitação do cliente ou assunto complexo";
+        const reason = transferMatch ? transferMatch[1] : "Solicitação do cliente";
 
         await supabase.from('notifications').insert({
             organization_id: orgId,
             customer_phone: customerPhone,
             customer_name: customerName || 'Visitante',
             type: 'human_request',
-            content: `Solicitação: "${text.substring(0, 40)}..." | Motivo AI: ${reason || 'Geral'}`,
+            content: `Solicitação Humana: "${text.substring(0, 50)}..." | Motivo: ${reason}`,
             is_read: false
         });
 
+        const cleanResponse = aiResponse.replace(/\[TRANSFER_TO_AGENT.*?\]/, "").trim();
         return { 
-            response: aiResponse.replace(/\[TRANSFER_TO_AGENT.*?\]/, "").trim() || "Entendi. Vou chamar um de nossos corretores para falar com você agora mesmo.", 
+            response: cleanResponse || "Entendi. Vou chamar um de nossos corretores para falar com você agora mesmo.", 
             action: "transfer"
         };
     }
 
+    // Caso B: Agendamento Confirmado
     const confirmationMatch = aiResponse.match(/\[VISITA_CONFIRMADA:\s*(.*?)\|(.*?)\|(.*?)\]/);
     if (confirmationMatch) {
         const dateString = confirmationMatch[1].trim();
-        const productId = confirmationMatch[2].trim() === 'GERAL' ? null : confirmationMatch[2].trim();
+        let productId = confirmationMatch[2].trim();
         const productName = confirmationMatch[3].trim();
         
-        const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId || '');
+        // Validação de UUID
+        const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId);
+        if (!isValidUUID || productId === 'GERAL') productId = null as any;
 
-        await supabase.from('appointments').insert({
+        // Inserir agendamento
+        const { error: bookingError } = await supabase.from('appointments').insert({
             org_id: orgId,
             customer_phone: customerPhone,
             client_name: customerName || customerPhone,
             appointment_date: new Date(dateString).toISOString(),
             status: 'confirmed',
-            product_id: isValidUUID ? productId : null
+            product_id: productId
         });
 
+        if (bookingError) console.error("Erro ao agendar:", bookingError);
+
+        // Notificar admin
         await supabase.from('notifications').insert({
             organization_id: orgId,
             customer_phone: customerPhone,
             customer_name: customerName || 'Visitante',
             type: 'scheduled',
-            content: `Nova visita agendada para ${dateString} - Imóvel: ${productName || 'Não especificado'}`,
+            content: `Visita agendada: ${dateString} - Imóvel: ${productName}`,
             is_read: false
         });
 
@@ -162,10 +181,11 @@ export async function botRealEstateControl({ orgId, history, text, customerPhone
         };
     }
 
+    // Caso C: Resposta Normal
     return { response: aiResponse, action: "chat" };
 
   } catch (error) {
     console.error("Erro AI Real Estate:", error);
-    return { response: "Erro de conexão momentâneo.", action: "error" };
+    return { response: "Desculpe, tive um erro de conexão. Tente novamente em instantes.", action: "error" };
   }
 }

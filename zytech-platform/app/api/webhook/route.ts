@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { botRealEstateControl } from "@/lib/bots/templates/core/real_estate";
-import { botDeliveryControl } from "@/lib/bots/templates/core/delivery";
-import { botSchedulingControl } from "@/lib/bots/templates/core/scheduling";
+
+// Importa o bot corrigido
+import { botRealEstateControl, BotContext } from "@/lib/bots/templates/core/real_estate";
+// Mantenha os outros importados se existirem, senão comente
+// import { botDeliveryControl } from "@/lib/bots/templates/core/delivery";
+// import { botSchedulingControl } from "@/lib/bots/templates/core/scheduling";
+
 import { sendWhatsAppMessage, getMediaUrl, downloadMedia } from "@/lib/whatsapp";
 import { transcribeAudio } from "@/lib/groq-audio";
 
+// Configuração do Supabase (Singleton para esta requisição)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -27,6 +32,12 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    
+    // Tratamento de Status (sent, delivered, read) - Ignorar
+    if (body.entry?.[0]?.changes?.[0]?.value?.statuses) {
+        return new NextResponse("OK", { status: 200 });
+    }
+
     const entry = body.entry?.[0];
     const change = entry?.changes?.[0];
     const value = change?.value;
@@ -35,30 +46,25 @@ export async function POST(req: NextRequest) {
     if (!message) return new NextResponse("OK", { status: 200 });
 
     const businessPhoneId = value.metadata?.phone_number_id;
-    console.log(">>> [DEBUG] ID Recebido da Meta:", businessPhoneId);
 
+    // 1. Identificar Empresa
     const { data: org, error } = await supabase
       .from("organizations")
       .select("id, bot_status, whatsapp_access_token, business_type, name")
       .eq("whatsapp_phone_id", businessPhoneId) 
       .single();
 
-    if (error) {
-        console.log(">>> [DEBUG] Erro ao buscar empresa:", error.message);
-    }
-
-    if (!org) {
-        console.log(">>> [DEBUG] Nenhuma empresa encontrada com este ID:", businessPhoneId);
+    if (error || !org) {
+        console.log(`[Webhook] Ignorando: Empresa não encontrada para ID ${businessPhoneId}`);
         return new NextResponse("OK", { status: 200 });
     }
 
-    console.log(`>>> [DEBUG] Empresa encontrada: ${org.name} | Status Bot: ${org.bot_status}`);
-
     if (!org.bot_status || !org.whatsapp_access_token) {
-      console.log(">>> [DEBUG] Bot desligado ou sem token.");
+      console.log(`[Webhook] Bot desligado para ${org.name}`);
       return new NextResponse("OK", { status: 200 });
     }
 
+    // 2. Processar Texto do Usuário
     const customerPhone = message.from;
     const customerName = value.contacts?.[0]?.profile?.name || "Visitante";
     let userText = "";
@@ -66,42 +72,68 @@ export async function POST(req: NextRequest) {
     if (message.type === "text") {
       userText = message.text.body;
     } else if (message.type === "audio") {
-      const mediaId = message.audio.id;
-      const mediaUrl = await getMediaUrl(mediaId, org.whatsapp_access_token);
-      if (mediaUrl) {
-        const audioBuffer = await downloadMedia(mediaUrl, org.whatsapp_access_token);
-        if (audioBuffer) {
-           const buffer = Buffer.from(audioBuffer);
-           const transcription = await transcribeAudio(buffer);
-           if (transcription) userText = transcription;
-           else await sendWhatsAppMessage(org.whatsapp_access_token, businessPhoneId, customerPhone, "Não entendi o áudio.");
+      try {
+        const mediaId = message.audio.id;
+        const mediaUrl = await getMediaUrl(mediaId, org.whatsapp_access_token);
+        if (mediaUrl) {
+            const audioBuffer = await downloadMedia(mediaUrl, org.whatsapp_access_token);
+            if (audioBuffer) {
+               const buffer = Buffer.from(audioBuffer);
+               userText = await transcribeAudio(buffer) || "";
+            }
         }
+      } catch (err) {
+          console.error("Erro processando áudio:", err);
+          await sendWhatsAppMessage(org.whatsapp_access_token, businessPhoneId, customerPhone, "Não consegui ouvir o áudio. Pode escrever?");
+          return new NextResponse("OK", { status: 200 });
       }
     }
 
     if (!userText) return new NextResponse("OK", { status: 200 });
 
-    let botResult;
-    const history: any[] = []; 
+    // 3. Preparar Execução do Bot
+    
+    // Wrapper simples para enviar mensagens (caso o bot precise mandar algo no meio do processo)
+    const sendMessageWrapper = async (text: string) => {
+        await sendWhatsAppMessage(org.whatsapp_access_token, businessPhoneId, customerPhone, text);
+    };
 
+    const botContext: BotContext = { 
+        orgId: org.id, 
+        history: [], // Implementar busca de histórico no Supabase aqui se desejar
+        text: userText, 
+        customerPhone, 
+        customerName 
+    };
+
+    let botResult;
+
+    // 4. Executar Bot Correto
+    // AQUI ESTAVA O ERRO: Agora passamos os 3 argumentos que o real_estate.ts espera
     if (org.business_type === 'real_estate') {
-        botResult = await botRealEstateControl({ orgId: org.id, history, text: userText, customerPhone, customerName });
-    } else if (org.business_type === 'delivery') {
-        botResult = await botDeliveryControl({ orgId: org.id, history, text: userText, customerPhone });
+        botResult = await botRealEstateControl(botContext, sendMessageWrapper, supabase);
+    } 
+    /* else if (org.business_type === 'delivery') {
+        botResult = await botDeliveryControl(botContext, sendMessageWrapper, supabase);
     } else {
-        botResult = await botSchedulingControl({ orgId: org.id, history, text: userText, customerPhone });
+        botResult = await botSchedulingControl(botContext, sendMessageWrapper, supabase);
+    }
+    */
+    else {
+        // Fallback temporário se não for imobiliária
+        console.log("Tipo de negócio não implementado ainda:", org.business_type);
+        return new NextResponse("OK", { status: 200 });
     }
 
-    if (botResult?.action === 'transfer') {
-        await sendWhatsAppMessage(org.whatsapp_access_token, businessPhoneId, customerPhone, botResult.response);
-    } else {
+    // 5. Enviar Resposta Final
+    if (botResult?.response) {
         await sendWhatsAppMessage(org.whatsapp_access_token, businessPhoneId, customerPhone, botResult.response);
     }
 
     return new NextResponse("OK", { status: 200 });
 
   } catch (error) {
-    console.error("Erro Crítico no Webhook:", error);
+    console.error("Erro Crítico Webhook:", error);
     return new NextResponse("Internal Server Error", { status: 500 });
   }
 }
