@@ -1,9 +1,9 @@
-'use client'
+"use client"
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabaseClient'
 import { useRouter } from 'next/navigation'
-import { Mail, Lock, ArrowRight, Loader2, Sparkles } from 'lucide-react'
+import { Mail, Lock, ArrowRight, Loader2, Sparkles, ShieldCheck } from 'lucide-react'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -44,20 +44,16 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#020202] text-white p-4 relative overflow-hidden font-sans selection:bg-blue-500/30">
       
-      {/* Background Ambience */}
       <div className="fixed top-[-20%] left-[-10%] w-[600px] h-[600px] bg-blue-900/10 blur-[120px] rounded-full pointer-events-none"></div>
       <div className="fixed bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-purple-900/10 blur-[120px] rounded-full pointer-events-none"></div>
 
-      <div className="w-full max-w-md relative z-10 animate-in fade-in zoom-in duration-500">
+      <div className="w-full max-w-md relative z-10 animate-in fade-in zoom-in duration-500 flex flex-col items-center">
         
-        {/* Glass Card */}
-        <div className="bg-[#0a0a0a]/60 backdrop-blur-xl border border-white/10 rounded-3xl p-8 md:p-10 shadow-2xl relative overflow-hidden group">
+        <div className="w-full bg-[#0a0a0a]/60 backdrop-blur-xl border border-white/10 rounded-3xl p-8 md:p-10 shadow-2xl relative overflow-hidden group">
           
-          {/* Top Decor Line */}
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-50"></div>
 
           <div className="text-center flex flex-col items-center">
-            {/* LOGO COM GLOW */}
             <div className="relative w-20 h-20 mb-6 rounded-2xl overflow-hidden border border-white/10 shadow-[0_0_30px_rgba(59,130,246,0.15)] group-hover:shadow-[0_0_40px_rgba(59,130,246,0.3)] transition-all duration-500">
                 <Image 
                     src="/icon.jpg" 
@@ -130,9 +126,25 @@ export default function LoginPage() {
           </div>
         </div>
         
-        <p className="text-center text-[10px] text-gray-600 mt-6 font-mono opacity-50">
-            SECURE CONNECTION • ENCRYPTED END-TO-END
-        </p>
+        <div className="mt-8 text-center space-y-2 opacity-60 hover:opacity-100 transition-opacity">
+            <p className="text-[10px] text-gray-600 font-mono flex items-center justify-center gap-2">
+                <ShieldCheck size={10} /> SECURE CONNECTION • ENCRYPTED END-TO-END
+            </p>
+            
+            <div className="pt-2 border-t border-white/5 w-full max-w-[200px] mx-auto"></div>
+            <div className="flex flex-col gap-0.5">
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">
+                    GABRIEL EGIDIO SANTOS BELONI
+                </p>
+                <p className="text-[10px] text-gray-600 font-mono">
+                    CNPJ: 64.137.389/0001-02
+                </p>
+                <p className="text-[9px] text-gray-700">
+                    Desde 22/12/2025 • Belo Horizonte, MG
+                </p>
+            </div>
+        </div>
+
       </div>
     </div>
   )
