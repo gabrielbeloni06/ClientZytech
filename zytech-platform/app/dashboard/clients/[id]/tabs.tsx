@@ -1,9 +1,12 @@
 'use client'
+import { useState, useEffect, useRef } from 'react'
+import { supabase } from '@/lib/supabaseClient'
 import { 
   TrendingUp, Power, FileText, Bot, Sparkles, RefreshCcw, Briefcase, Save, 
   Home, Scissors, Package, Plus, MapPin, Clock, CheckCircle, XCircle, Truck, 
   ChefHat, Phone, Calendar, ExternalLink, MessageCircle, Filter, User, Link as LinkIcon,
-  ShoppingCart, List, X, Settings, Brain, Trash2, ArrowRight, HelpCircle, Bell, UserPlus
+  ShoppingCart, List, X, Settings, Brain, Trash2, ArrowRight, HelpCircle, Bell, UserPlus,
+  MessageSquare, Search, Send, Loader2
 } from 'lucide-react'
 
 export const NeonLineChart = ({ currentData, prevTotal }: { currentData: number[], prevTotal: number }) => {
@@ -82,6 +85,165 @@ export const OverviewTab = ({ monthlyStats, loadingStats, notes, setNotes, handl
       </div>
   </div>
 )
+
+export const ChatTab = ({ client }: any) => {
+  const [contacts, setContacts] = useState<any[]>([])
+  const [selectedPhone, setSelectedPhone] = useState<string | null>(null)
+  const [messages, setMessages] = useState<any[]>([])
+  const [inputText, setInputText] = useState('')
+  const [sending, setSending] = useState(false)
+  const [loadingContacts, setLoadingContacts] = useState(true)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    fetchContacts()
+    const interval = setInterval(fetchContacts, 10000)
+    return () => clearInterval(interval)
+  }, [client.id])
+
+  useEffect(() => {
+    if (selectedPhone) {
+      fetchMessages(selectedPhone)
+      const interval = setInterval(() => fetchMessages(selectedPhone), 3000)
+      return () => clearInterval(interval)
+    }
+  }, [selectedPhone])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
+
+  async function fetchContacts() {
+    const { data } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('organization_id', client.id)
+      .order('created_at', { ascending: false })
+
+    if (data) {
+      const uniqueMap = new Map()
+      data.forEach((msg: any) => {
+        if (!uniqueMap.has(msg.phone)) {
+          uniqueMap.set(msg.phone, {
+            phone: msg.phone,
+            lastMessage: msg.content,
+            date: new Date(msg.created_at),
+            name: msg.sender_name || 'Desconhecido'
+          })
+        }
+      })
+      setContacts(Array.from(uniqueMap.values()))
+    }
+    setLoadingContacts(false)
+  }
+
+  async function fetchMessages(phone: string) {
+    const { data } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('organization_id', client.id)
+      .eq('phone', phone)
+      .order('created_at', { ascending: true })
+    
+    if (data) setMessages(data)
+  }
+
+  async function handleSendMessage(e: React.FormEvent) {
+    e.preventDefault()
+    if (!inputText.trim() || !selectedPhone) return
+
+    setSending(true)
+    const tempText = inputText
+    setInputText('') 
+
+    try {
+      const res = await fetch('/api/chat/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId: client.id,
+          phone: selectedPhone,
+          text: tempText
+        })
+      })
+      
+      if (!res.ok) throw new Error('Falha no envio')
+      await fetchMessages(selectedPhone)
+      
+    } catch (error) {
+      alert('Erro ao enviar mensagem')
+      setInputText(tempText)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="flex h-[600px] bg-[#0a0a0a] border border-white/10 rounded-2xl overflow-hidden shadow-2xl animate-in fade-in slide-in-from-bottom-4">
+      <div className="w-1/3 border-r border-white/10 flex flex-col bg-[#050505]">
+        <div className="p-4 border-b border-white/10 bg-[#0a0a0a]">
+          <h3 className="font-bold text-white mb-3 flex items-center gap-2">
+            <MessageSquare size={18} className="text-blue-500"/> Conversas
+          </h3>
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 text-gray-500" size={14} />
+            <input type="text" placeholder="Buscar número..." className="w-full bg-[#111] border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:border-blue-500 outline-none" />
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+          {loadingContacts ? (
+            <div className="flex justify-center p-8"><Loader2 className="animate-spin text-blue-500"/></div>
+          ) : contacts.length === 0 ? (
+            <div className="text-center p-8 text-gray-500 text-sm">Nenhuma conversa iniciada.</div>
+          ) : (
+            contacts.map(contact => (
+              <div key={contact.phone} onClick={() => setSelectedPhone(contact.phone)} className={`p-4 border-b border-white/5 cursor-pointer hover:bg-white/5 transition-colors ${selectedPhone === contact.phone ? 'bg-blue-900/20 border-l-2 border-l-blue-500' : ''}`}>
+                <div className="flex justify-between mb-1">
+                  <span className="font-bold text-gray-200 text-sm">{contact.name !== 'Cliente' ? contact.name : contact.phone}</span>
+                  <span className="text-[10px] text-gray-500">{contact.date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                </div>
+                <p className="text-xs text-gray-400 truncate max-w-[200px]">{contact.lastMessage}</p>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+      <div className="flex-1 flex flex-col bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-opacity-5">
+        {selectedPhone ? (
+          <>
+            <div className="p-4 bg-[#0a0a0a]/90 backdrop-blur border-b border-white/10 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center"><User size={20} className="text-white"/></div>
+                <div><h3 className="font-bold text-white">{selectedPhone}</h3><span className="text-xs text-green-400 flex items-center gap-1">● Online via WhatsApp</span></div>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+              {messages.map((msg) => {
+                const isUser = msg.role === 'user'
+                return (
+                  <div key={msg.id} className={`flex ${isUser ? 'justify-start' : 'justify-end'}`}>
+                    <div className={`max-w-[70%] rounded-2xl p-3 text-sm shadow-md relative ${isUser ? 'bg-[#202c33] text-white rounded-tl-none' : 'bg-[#005c4b] text-white rounded-tr-none'}`}>
+                      {!isUser && <div className="text-[10px] text-green-200 font-bold mb-1 flex items-center gap-1">{msg.sender_name === 'Atendente Humano' ? <User size={10}/> : <Bot size={10}/>} {msg.sender_name === 'Atendente Humano' ? 'Você' : 'Bot AI'}</div>}
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                      <span className="text-[10px] text-gray-400 block text-right mt-1 opacity-70">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    </div>
+                  </div>
+                )
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+            <form onSubmit={handleSendMessage} className="p-4 bg-[#0a0a0a] border-t border-white/10 flex gap-2">
+              <input type="text" placeholder="Digite sua mensagem..." className="flex-1 bg-[#18181b] border border-white/10 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none transition-colors" value={inputText} onChange={(e) => setInputText(e.target.value)} />
+              <button type="submit" disabled={sending || !inputText.trim()} className="bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">{sending ? <Loader2 className="animate-spin"/> : <Send size={20} />}</button>
+            </form>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-500 opacity-50"><Phone size={64} className="mb-4 text-gray-700"/><p>Selecione um contato para iniciar o atendimento</p></div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb, isSyncingSchedule, handleSaveBotConfig, isSavingBot, isEditing, setIsEditing, editForm, setEditForm, handleUpdateClient, botCapabilities, filteredTemplates }: any) => (
   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">

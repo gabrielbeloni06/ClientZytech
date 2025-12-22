@@ -7,9 +7,10 @@ import {
   ArrowLeft, Key, CreditCard,
   Briefcase, ShoppingCart, Calendar, Scissors, 
   List, Package, User, LayoutDashboard, Sparkles,
-  Home, Building, Tag, X, Save, Settings, Plus, Bell
+  Home, Building, Tag, X, Save, Settings, Plus, Bell,
+  MessageCircle, MessageSquare
 } from 'lucide-react'
-import { OverviewTab, SettingsTab, CatalogTab, AppointmentsTab, OrdersTab, NotificationsTab } from './tabs'
+import { OverviewTab, SettingsTab, CatalogTab, AppointmentsTab, OrdersTab, NotificationsTab, ChatTab } from './tabs'
 
 const TEMPLATES_BY_PLAN: Record<string, string[]> = {
     'ZyStart': ['comercio_basico', 'comercio_agendamento', 'delivery_padrao', 'imobiliaria_basico'],
@@ -323,6 +324,7 @@ export default function ClientDetailsPage() {
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
             {[
                 { id: 'overview', label: 'Visão Geral', icon: LayoutDashboard },
+                { id: 'chat', label: 'Bate-papo', icon: MessageSquare }, // ABA NOVA
                 { id: 'contract', label: 'Configurações', icon: Settings },
                 showNotifications && { id: 'notifications', label: 'Alertas', icon: Bell }, 
                 { id: 'bot_catalog', label: isRealEstate ? 'Imóveis' : 'Catálogo Bot', icon: isRealEstate ? Home : Package },
@@ -338,6 +340,7 @@ export default function ClientDetailsPage() {
 
         <div className="min-h-[400px]">
             {activeTab === 'overview' && <OverviewTab monthlyStats={monthlyStats} loadingStats={loadingStats} notes={notes} setNotes={setNotes} handleSaveNotes={handleSaveNotes} isSavingNotes={isSavingNotes} unit={isRealEstate ? '' : 'R$'} statLabel={isRealEstate ? 'Visitas Realizadas' : 'Performance'} />}
+            {activeTab === 'chat' && <ChatTab client={client} />}
             {activeTab === 'contract' && <SettingsTab role={role} botConfig={botConfig} setBotConfig={setBotConfig} syncScheduleFromDb={syncScheduleFromDb} isSyncingSchedule={isSyncingSchedule} handleSaveBotConfig={handleSaveBotConfig} isSavingBot={isSavingBot} isEditing={isEditing} setIsEditing={setIsEditing} editForm={editForm} setEditForm={setEditForm} handleUpdateClient={handleUpdateClient} botCapabilities={getBotCaps} filteredTemplates={getFilteredTemplates()} />}
             {activeTab === 'notifications' && showNotifications && <NotificationsTab notifications={notifications} markAsRead={markAsRead} loadingNotifications={loadingNotifications} fetchNotifications={fetchNotifications} />}
             {activeTab === 'bot_catalog' && <CatalogTab client={client} isRealEstate={isRealEstate} isServiceType={isServiceType} products={products} setIsProductModalOpen={setIsProductModalOpen} labels={labels} toggleProductStatus={toggleProductStatus} handleDeleteProduct={handleDeleteProduct} />}
