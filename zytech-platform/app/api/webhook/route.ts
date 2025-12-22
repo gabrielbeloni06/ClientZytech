@@ -1,39 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Importa o bot corrigido
+// Imports dos Bots
 import { botRealEstateControl, BotContext } from "@/lib/bots/templates/core/real_estate";
-// Mantenha os outros importados se existirem, senão comente
 // import { botDeliveryControl } from "@/lib/bots/templates/core/delivery";
 // import { botSchedulingControl } from "@/lib/bots/templates/core/scheduling";
 
 import { sendWhatsAppMessage, getMediaUrl, downloadMedia } from "@/lib/whatsapp";
 import { transcribeAudio } from "@/lib/groq-audio";
 
-// Configuração do Supabase (Singleton para esta requisição)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// ============================================================================
+// VERIFICAÇÃO (GET) - ONDE ESTÁ DANDO FORBIDDEN
+// ============================================================================
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const mode = url.searchParams.get("hub.mode");
   const token = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
-  const myVerifyToken = process.env.ZYTECH_VERIFY_TOKEN || "zytech123";
+  
+  // Lista de tokens aceitos para evitar erro bobo de digitação
+  const tokensAceitos = [
+      process.env.ZYTECH_VERIFY_TOKEN, 
+      "clientzy_token_seguro", 
+      "zytech123"
+  ].filter(Boolean); // Remove nulos
 
-  if (mode === "subscribe" && token === myVerifyToken) {
+  console.log(`>>> [WEBHOOK VERIFY] Tentativa de conexão...`);
+  console.log(`>>> [WEBHOOK VERIFY] Mode: ${mode}`);
+  console.log(`>>> [WEBHOOK VERIFY] Token Recebido: "${token}"`);
+  console.log(`>>> [WEBHOOK VERIFY] Tokens Aceitos: ${JSON.stringify(tokensAceitos)}`);
+
+  if (mode === "subscribe" && tokensAceitos.includes(token || '')) {
+    console.log(">>> [WEBHOOK VERIFY] SUCESSO! Token validado.");
     return new NextResponse(challenge, { status: 200 });
   }
+
+  console.error(">>> [WEBHOOK VERIFY] FALHA: Forbidden (Token incorreto ou acesso direto sem parametros)");
   return new NextResponse("Forbidden", { status: 403 });
 }
 
+// ============================================================================
+// RECEBIMENTO (POST)
+// ============================================================================
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     
-    // Tratamento de Status (sent, delivered, read) - Ignorar
+    // Ignorar atualizações de status para limpar o log
     if (body.entry?.[0]?.changes?.[0]?.value?.statuses) {
         return new NextResponse("OK", { status: 200 });
     }
@@ -43,11 +61,15 @@ export async function POST(req: NextRequest) {
     const value = change?.value;
     const message = value?.messages?.[0];
 
-    if (!message) return new NextResponse("OK", { status: 200 });
+    if (!message) {
+        // Ping da Meta ou evento sem mensagem
+        return new NextResponse("OK", { status: 200 });
+    }
 
     const businessPhoneId = value.metadata?.phone_number_id;
+    console.log(`>>> [MSG] De: ${message.from} | Para ID da Empresa: ${businessPhoneId}`);
 
-    // 1. Identificar Empresa
+    // 1. Busca a empresa dona deste número
     const { data: org, error } = await supabase
       .from("organizations")
       .select("id, bot_status, whatsapp_access_token, business_type, name")
@@ -55,85 +77,70 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error || !org) {
-        console.log(`[Webhook] Ignorando: Empresa não encontrada para ID ${businessPhoneId}`);
+        console.warn(`>>> [ERRO] Empresa não encontrada para o ID ${businessPhoneId}. Verifique se o ID no Supabase está exato.`);
         return new NextResponse("OK", { status: 200 });
     }
 
-    if (!org.bot_status || !org.whatsapp_access_token) {
-      console.log(`[Webhook] Bot desligado para ${org.name}`);
+    // 2. Verifica se bot está ativo
+    if (!org.bot_status) {
+      console.log(`>>> [SILENCIO] Bot desligado para ${org.name}`);
       return new NextResponse("OK", { status: 200 });
     }
 
-    // 2. Processar Texto do Usuário
+    // 3. Processa Texto/Audio
     const customerPhone = message.from;
-    const customerName = value.contacts?.[0]?.profile?.name || "Visitante";
+    const customerName = value.contacts?.[0]?.profile?.name || "Cliente";
     let userText = "";
 
     if (message.type === "text") {
       userText = message.text.body;
     } else if (message.type === "audio") {
-      try {
-        const mediaId = message.audio.id;
-        const mediaUrl = await getMediaUrl(mediaId, org.whatsapp_access_token);
-        if (mediaUrl) {
-            const audioBuffer = await downloadMedia(mediaUrl, org.whatsapp_access_token);
-            if (audioBuffer) {
-               const buffer = Buffer.from(audioBuffer);
-               userText = await transcribeAudio(buffer) || "";
+        // Lógica de áudio (mantida simples)
+        // Se der erro aqui, descomente os logs de erro no catch
+        try {
+            const mediaId = message.audio.id;
+            const mediaUrl = await getMediaUrl(mediaId, org.whatsapp_access_token);
+            if (mediaUrl) {
+                const audioBuffer = await downloadMedia(mediaUrl, org.whatsapp_access_token);
+                if (audioBuffer) {
+                    const buffer = Buffer.from(audioBuffer);
+                    userText = await transcribeAudio(buffer) || "";
+                }
             }
+        } catch (e) {
+            console.error("Erro audio:", e);
         }
-      } catch (err) {
-          console.error("Erro processando áudio:", err);
-          await sendWhatsAppMessage(org.whatsapp_access_token, businessPhoneId, customerPhone, "Não consegui ouvir o áudio. Pode escrever?");
-          return new NextResponse("OK", { status: 200 });
-      }
     }
 
     if (!userText) return new NextResponse("OK", { status: 200 });
 
-    // 3. Preparar Execução do Bot
-    
-    // Wrapper simples para enviar mensagens (caso o bot precise mandar algo no meio do processo)
+    console.log(`>>> [PROCESSANDO] Cliente diz: "${userText}"`);
+
+    // 4. Executa Bot
     const sendMessageWrapper = async (text: string) => {
+        console.log(`>>> [RESPONDENDO] "${text}"`);
         await sendWhatsAppMessage(org.whatsapp_access_token, businessPhoneId, customerPhone, text);
     };
 
     const botContext: BotContext = { 
         orgId: org.id, 
-        history: [], // Implementar busca de histórico no Supabase aqui se desejar
+        history: [], 
         text: userText, 
         customerPhone, 
         customerName 
     };
 
-    let botResult;
-
-    // 4. Executar Bot Correto
-    // AQUI ESTAVA O ERRO: Agora passamos os 3 argumentos que o real_estate.ts espera
     if (org.business_type === 'real_estate') {
-        botResult = await botRealEstateControl(botContext, sendMessageWrapper, supabase);
-    } 
-    /* else if (org.business_type === 'delivery') {
-        botResult = await botDeliveryControl(botContext, sendMessageWrapper, supabase);
+        const result = await botRealEstateControl(botContext, sendMessageWrapper, supabase);
+        if (result?.response) await sendMessageWrapper(result.response);
     } else {
-        botResult = await botSchedulingControl(botContext, sendMessageWrapper, supabase);
-    }
-    */
-    else {
-        // Fallback temporário se não for imobiliária
-        console.log("Tipo de negócio não implementado ainda:", org.business_type);
-        return new NextResponse("OK", { status: 200 });
-    }
-
-    // 5. Enviar Resposta Final
-    if (botResult?.response) {
-        await sendWhatsAppMessage(org.whatsapp_access_token, businessPhoneId, customerPhone, botResult.response);
+        await sendMessageWrapper("Olá! Sou o assistente virtual da " + org.name);
     }
 
     return new NextResponse("OK", { status: 200 });
 
   } catch (error) {
-    console.error("Erro Crítico Webhook:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    console.error("Erro Fatal Webhook:", error);
+    return new NextResponse("Internal Error", { status: 500 });
   }
 }
