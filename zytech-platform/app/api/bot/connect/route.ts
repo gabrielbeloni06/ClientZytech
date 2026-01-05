@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   try {
     const { instanceName } = await req.json();
 
-    console.log(`>>> [INIT] Conectando a ${BASE_URL} para instância: ${instanceName}`);
+    console.log(`>>> [INIT] Conectando a ${BASE_URL}`);
 
     if (!BASE_URL || !EVO_KEY) {
         return NextResponse.json({ error: "Configuração da API incompleta." }, { status: 500 });
@@ -28,7 +28,34 @@ export async function POST(req: NextRequest) {
         "User-Agent": "ClientzyBot/1.0"
     };
 
-    // 1. TENTATIVA DE CRIAÇÃO (CREATE)
+    // 1. CHECAGEM E LIMPEZA (FORCE RESET)
+    // Se a instância já existe mas não está conectada, matamos ela para não travar o boot.
+    try {
+        const stateRes = await fetch(`${BASE_URL}/instance/connectionState/${instanceName}`, {
+             headers
+        });
+        
+        if (stateRes.ok) {
+            const data = await stateRes.json();
+            const state = data?.instance?.state;
+            
+            if (state === 'open') {
+                 return NextResponse.json({ status: "connected", message: "Já conectado!" });
+            }
+            
+            console.log(`>>> [RESET] Apagando instância travada (${state})...`);
+            await fetch(`${BASE_URL}/instance/delete/${instanceName}`, {
+                method: "DELETE",
+                headers
+            });
+            // Delay obrigatório para o Postgres da VPS limpar os dados
+            await delay(3000); 
+        }
+    } catch (e) {
+        console.log(">>> [INFO] Instância limpa (não existia).");
+    }
+
+    // 2. CRIAÇÃO LIMPA (CREATE)
     const createUrl = `${BASE_URL}/instance/create`;
     const createPayload = {
       instanceName: instanceName,
@@ -38,7 +65,7 @@ export async function POST(req: NextRequest) {
       reject_call: true
     };
 
-    console.log(`>>> [CREATE] POST ${createUrl}`);
+    console.log(`>>> [CREATE] Criando nova instância...`);
 
     try {
         const createRes = await fetch(createUrl, {
@@ -47,37 +74,25 @@ export async function POST(req: NextRequest) {
             body: JSON.stringify(createPayload)
         });
         
-        const resText = await createRes.text();
-
-        // Tratamento Inteligente de Erros
-        if (createRes.status === 403 && (resText.includes("already in use") || resText.includes("already exists"))) {
-            // SUCESSO DISFARÇADO: Se já existe, apenas logamos e seguimos para buscar o QR Code
-            console.log(`>>> [CREATE SKIP] Instância já existe. Prosseguindo para conexão.`);
-        } 
-        else if (createRes.status === 401) {
-            // ERRO REAL DE SENHA
-            console.error(`>>> [401 AUTH] Senha rejeitada.`);
-            return NextResponse.json({ error: "Erro de Autenticação: Verifique a API KEY na Vercel." }, { status: 401 });
+        if (!createRes.ok) {
+            const txt = await createRes.text();
+            // Ignora erro se for "já existe" (caso o delete tenha falhado por timing)
+            if (!txt.includes("already")) console.log(`>>> [CREATE INFO] ${txt}`);
         }
-        else if (!createRes.ok) {
-            // OUTROS ERROS
-            console.warn(`>>> [CREATE WARN] HTTP ${createRes.status}: ${resText}`);
-        } else {
-            // SUCESSO REAL (201)
-            console.log(`>>> [CREATE SUCCESS] Instância criada.`);
-            // Se criou agora, espera o boot
-            await delay(3000);
-        }
+        
+        // Aguarda o Boot do Chrome na VPS (Essencial para não receber count:0)
+        console.log(">>> [WAIT] Aguardando motor (5s)...");
+        await delay(5000);
 
     } catch (e: any) {
-        console.error(">>> [NET ERROR]", e);
-        return NextResponse.json({ error: `Erro de Rede: ${e.message}` }, { status: 502 });
+        return NextResponse.json({ error: `Erro de Rede ao Criar: ${e.message}` }, { status: 502 });
     }
 
-    // 2. BUSCA DO QR CODE (CONNECT)
-    // Tenta 3 vezes
-    for (let i = 0; i < 3; i++) {
+    // 3. BUSCA DO QR CODE (CONNECT)
+    // Tenta por 15 segundos (5 tentativas de 3s)
+    for (let i = 0; i < 5; i++) {
         try {
+            console.log(`>>> [POLLING ${i+1}/5] Buscando QR...`);
             const connectRes = await fetch(`${BASE_URL}/instance/connect/${instanceName}`, {
                 method: 'GET',
                 headers
@@ -86,14 +101,12 @@ export async function POST(req: NextRequest) {
             if (connectRes.ok) {
                 const data = await connectRes.json();
                 
-                // Se já conectou
                 if (data?.instance?.state === 'open') {
                     return NextResponse.json({ status: "connected", message: "Conectado!" });
                 }
 
-                // Se count:0, ainda está no boot
                 if (data.count === 0) {
-                    console.log(">>> [WAIT] count:0 (Booting)...");
+                    console.log(">>> [WAIT] count:0 (Ainda carregando)...");
                 } 
                 else {
                     const qr = data?.base64 || data?.qrcode?.base64 || data?.qrcode;
@@ -102,18 +115,18 @@ export async function POST(req: NextRequest) {
                         return NextResponse.json({ status: "qrcode", qrcode: qr });
                     }
                 }
-            } else {
-                console.log(`>>> [CONNECT FAIL] HTTP ${connectRes.status}`);
             }
         } catch (e) {
             console.log(">>> [RETRY QR]", e);
         }
-        await delay(1500);
+        await delay(3000);
     }
 
+    // Se saiu do loop, ainda está carregando.
+    // Retorna LOADING para o frontend tentar de novo em vez de dar erro.
     return NextResponse.json({ 
         status: "loading", 
-        message: "Inicializando WhatsApp na VPS..." 
+        message: "Sincronizando com WhatsApp..." 
     });
 
   } catch (err: any) {
