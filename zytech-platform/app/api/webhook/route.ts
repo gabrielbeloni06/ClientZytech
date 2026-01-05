@@ -1,110 +1,129 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 
-// Imports dos Bots
-import { botRealEstateControl, BotContext } from "@/lib/bots/templates/core/real_estate";
-// import { botDeliveryControl } from "@/lib/bots/templates/core/delivery";
+export const runtime = "nodejs";
 
-import { sendWhatsAppMessage } from "@/lib/whatsapp";
-import { transcribeAudio } from "@/lib/groq-audio";
+const BASE_URL = "http://46.224.182.243:8080";
+const EVO_KEY = "clientzy_master_key_2025";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Health Check
-export async function GET(req: NextRequest) {
-  return new NextResponse("Evolution Webhook Online 🚀", { status: 200 });
-}
-
-// Recebimento de Mensagens
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const { instanceName } = await req.json();
+    const cleanName = instanceName?.trim() || "final_test";
+    const reqId = Date.now().toString().slice(-4);
 
-    // 1. Validação do Evento (Evolution v2: messages.upsert)
-    if (body.event !== 'messages.upsert') return new NextResponse("OK", { status: 200 });
+    console.log(`[${reqId}] >>> INÍCIO v2.1.1: ${cleanName}`);
 
-    const msgData = body.data;
-    const instanceName = body.instance; // Nome da instância = Phone ID no banco
-    
-    if (msgData.key.fromMe || msgData.key.remoteJid === 'status@broadcast') {
-        return new NextResponse("OK", { status: 200 });
+    const headers = {
+      "Content-Type": "application/json",
+      "apikey": EVO_KEY
+    };
+
+    /* =========================
+       1. CRIAR INSTÂNCIA
+    ========================== */
+    try {
+      const createRes = await fetch(`${BASE_URL}/instance/create`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          instanceName: cleanName,
+          token: crypto.randomUUID(),
+          qrcode: true,
+          integration: "WHATSAPP-BAILEYS",
+          reject_call: true
+        })
+      });
+
+      if (createRes.ok) {
+        console.log(`[${reqId}] >>> CRIADO (201). Aguardando Chrome (5s)...`);
+        await delay(5000);
+      } else {
+        const txt = await createRes.text();
+        if (!txt.includes("already exists")) {
+          console.log(`[${reqId}] >>> INFO CREATE: ${txt}`);
+        }
+      }
+    } catch (e) {
+      console.error(`[${reqId}] >>> ERRO CREATE:`, e);
     }
 
-    console.log(`>>> [MSG] De: ${msgData.pushName} | Instância: ${instanceName}`);
+    /* =========================
+       2. DISPARAR CONNECT (1x)
+    ========================== */
+    try {
+      await fetch(`${BASE_URL}/instance/connect/${cleanName}`, {
+        headers,
+        cache: "no-store"
+      });
+      console.log(`[${reqId}] >>> CONNECT disparado`);
+    } catch (e) {
+      console.error(`[${reqId}] >>> ERRO CONNECT:`, e);
+    }
 
-    // 2. Busca Empresa
-    const { data: org } = await supabase
-      .from("organizations")
-      .select("id, bot_status, business_type, name, ai_faq, whatsapp_access_token")
-      .eq("whatsapp_phone_id", instanceName) 
-      .single();
+    /* =========================
+       3. POLLING DO QR CODE
+       (endpoint CORRETO)
+    ========================== */
+    for (let i = 0; i < 6; i++) {
+      try {
+        console.log(`[${reqId}] >>> Tentativa ${i + 1}/6 (connectionState)...`);
 
-    if (!org || !org.bot_status) return new NextResponse("OK", { status: 200 });
+        const stateRes = await fetch(
+          `${BASE_URL}/instance/connectionState/${cleanName}`,
+          { headers, cache: "no-store" }
+        );
 
-    // 3. Extração
-    const customerPhone = msgData.key.remoteJid.replace('@s.whatsapp.net', '');
-    const customerName = msgData.pushName || "Cliente";
-    let userText = "";
-    
-    if (msgData.messageType === 'conversation') userText = msgData.message.conversation;
-    else if (msgData.messageType === 'extendedTextMessage') userText = msgData.message.extendedTextMessage.text;
-    else if (msgData.messageType === 'audioMessage') userText = "[Áudio]"; // Simplificado
+        if (stateRes.ok) {
+          const data = await stateRes.json();
 
-    if (!userText) return new NextResponse("OK", { status: 200 });
+          console.log(
+            `[${reqId}] >>> STATE: ${JSON.stringify(data).substring(0, 120)}...`
+          );
 
-    // 4. Memória
-    await supabase.from('chat_messages').insert({
-        organization_id: org.id,
-        phone: customerPhone,
-        role: 'user',
-        content: userText,
-        sender_name: customerName
+          // Já conectado
+          if (data?.instance?.state === "open") {
+            return NextResponse.json({
+              status: "connected",
+              message: "Conectado com sucesso!"
+            });
+          }
+
+          // QR Code (v2.1.1)
+          const qr =
+            data?.qrcode?.base64 ||
+            data?.qr ||
+            data?.base64;
+
+          if (qr && typeof qr === "string" && qr.length > 50) {
+            console.log(`[${reqId}] >>> QR CODE ENCONTRADO`);
+            return NextResponse.json({
+              status: "qrcode",
+              qrcode: qr
+            });
+          }
+        }
+      } catch (e) {
+        console.error(`[${reqId}] >>> ERRO LOOP:`, e);
+      }
+
+      await delay(3000);
+    }
+
+    /* =========================
+       4. FALLBACK
+    ========================== */
+    return NextResponse.json({
+      status: "loading",
+      message: "Instância inicializando, tente novamente."
     });
 
-    const { data: historyData } = await supabase
-        .from('chat_messages')
-        .select('role, content')
-        .eq('organization_id', org.id)
-        .eq('phone', customerPhone)
-        .order('created_at', { ascending: false })
-        .limit(6);
-    
-    const history = historyData ? historyData.reverse() : [];
-
-    // 5. Bot
-    const sendMessageWrapper = async (text: string) => {
-        if (!text) return;
-        await sendWhatsAppMessage('', instanceName, customerPhone, text);
-        await supabase.from('chat_messages').insert({
-            organization_id: org.id,
-            phone: customerPhone,
-            role: 'assistant',
-            content: text
-        });
-    };
-
-    const botContext: BotContext = { 
-        orgId: org.id, 
-        history, 
-        text: userText, 
-        customerPhone, 
-        customerName 
-    };
-
-    if (org.business_type === 'real_estate') {
-        const result = await botRealEstateControl(botContext, sendMessageWrapper, supabase);
-        if (result?.response) await sendMessageWrapper(result.response);
-    } else {
-        await sendMessageWrapper(`Olá! Sou o assistente da ${org.name}.`);
-    }
-
-    return new NextResponse("OK", { status: 200 });
-
-  } catch (error) {
-    console.error("Erro Webhook:", error);
-    return new NextResponse("Error", { status: 500 });
+  } catch (err: any) {
+    console.error("ERRO GERAL:", err);
+    return NextResponse.json(
+      { error: err.message },
+      { status: 500 }
+    );
   }
 }
