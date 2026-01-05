@@ -64,14 +64,15 @@ export async function POST(req: NextRequest) {
         const cleanPhone = phoneNumber.replace(/\D/g, '');
         console.log(`>>> [PAIRING] Aguardando motor iniciar para pedir código para: ${cleanPhone}...`);
         
-        await delay(6000); 
+        await delay(5000); 
 
-        const connectUrl = `${EVO_URL}/instance/connect/${instanceName}`;
+        const connectUrl = `${EVO_URL}/instance/connect/${instanceName}?number=${cleanPhone}`;
+        
+        console.log(`>>> [PAIRING REQUEST] ${connectUrl}`);
         
         const pairRes = await fetch(connectUrl, {
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json', 'apikey': EVO_KEY! },
-            body: JSON.stringify({ number: cleanPhone })
+            method: 'GET', 
+            headers: { 'apikey': EVO_KEY! }
         });
 
         if (!pairRes.ok) {
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ status: 'pairing', code: code });
         }
         
-        return NextResponse.json({ error: "A API não retornou o código. Tente novamente." }, { status: 500 });
+        return NextResponse.json({ error: "A API respondeu mas não enviou o código. Tente novamente." }, { status: 500 });
     }
 
     await delay(2000);
