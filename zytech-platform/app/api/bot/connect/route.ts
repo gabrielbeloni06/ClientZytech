@@ -1,36 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const runtime = "nodejs";
+
 const EVO_URL = process.env.EVOLUTION_API_URL!;
 const EVO_KEY = process.env.EVOLUTION_API_KEY!;
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function getState(instanceName: string) {
-  const res = await fetch(
-    `${EVO_URL}/instance/connectionState/${instanceName}`,
-    { headers: { apikey: EVO_KEY } }
-  );
-
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data?.instance?.state;
+  try {
+    const res = await fetch(
+      `${EVO_URL}/instance/connectionState/${instanceName}`,
+      { headers: { apikey: EVO_KEY } }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.instance?.state;
+  } catch {
+    return null;
+  }
 }
 
-async function waitForBaileys(instanceName: string, timeout = 35000) {
+async function waitForAnyState(instanceName: string, timeout = 30000) {
   const start = Date.now();
 
   while (Date.now() - start < timeout) {
     const state = await getState(instanceName);
     console.log(">>> [STATE]", state);
 
-    if (state === "connecting" || state === "pairing") {
-      return;
-    }
+    if (state && state !== "close") return state;
 
     await delay(2000);
   }
 
-  throw new Error("Timeout aguardando motor Baileys iniciar");
+  throw new Error("Timeout aguardando instância responder");
 }
 
 export async function POST(req: NextRequest) {
@@ -39,7 +42,7 @@ export async function POST(req: NextRequest) {
 
     if (!instanceName) {
       return NextResponse.json(
-        { error: "Nome da instância é obrigatório" },
+        { error: "instanceName é obrigatório" },
         { status: 400 }
       );
     }
@@ -50,9 +53,9 @@ export async function POST(req: NextRequest) {
       }`
     );
 
-    // ─────────────────────────────────────────────
-    // 1️⃣ Verifica / apaga instância antiga
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
+    // 1️⃣ Limpa instância antiga
+    // ─────────────────────────────
     try {
       const state = await getState(instanceName);
 
@@ -69,15 +72,13 @@ export async function POST(req: NextRequest) {
           method: "DELETE",
           headers: { apikey: EVO_KEY }
         });
-        await delay(5000);
+        await delay(6000);
       }
-    } catch {
-      console.log(">>> [INFO] Instância inexistente");
-    }
+    } catch {}
 
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
     // 2️⃣ Cria instância
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
     console.log(">>> [CREATE] Criando instância");
 
     await fetch(`${EVO_URL}/instance/create`, {
@@ -96,28 +97,32 @@ export async function POST(req: NextRequest) {
       })
     });
 
-    // ─────────────────────────────────────────────
-    // 3️⃣ Espera motor iniciar
-    // ─────────────────────────────────────────────
-    await waitForBaileys(instanceName);
+    await delay(3000);
 
-    // ─────────────────────────────────────────────
-    // 4️⃣ PAIRING POR NÚMERO
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
+    // 3️⃣ PAIRING POR NÚMERO
+    // ─────────────────────────────
     if (phoneNumber) {
       const cleanPhone = phoneNumber.replace(/\D/g, "");
-      console.log(">>> [PAIRING] Solicitando código:", cleanPhone);
+      console.log(">>> [PAIRING] Iniciando pairing:", cleanPhone);
 
+      // 🔥 Chamada que SOBE o motor
+      await fetch(
+        `${EVO_URL}/instance/connect/${instanceName}?number=${cleanPhone}`,
+        { headers: { apikey: EVO_KEY } }
+      );
+
+      // 🔥 Espera qualquer estado vivo
+      await waitForAnyState(instanceName);
+
+      // 🔥 Pede o código de verdade
       const pairRes = await fetch(
         `${EVO_URL}/instance/connect/${instanceName}?number=${cleanPhone}`,
-        {
-          method: "GET",
-          headers: { apikey: EVO_KEY }
-        }
+        { headers: { apikey: EVO_KEY } }
       );
 
       const pairData = await pairRes.json();
-      console.log(">>> [PAIR RESPONSE]", pairData);
+      console.log(">>> [PAIR RAW]", pairData);
 
       const code =
         pairData?.code ||
@@ -126,7 +131,7 @@ export async function POST(req: NextRequest) {
 
       if (!code) {
         return NextResponse.json(
-          { error: "Evolution não retornou pairing code" },
+          { error: "Pairing não retornado (WhatsApp bloqueado ou instância inválida)" },
           { status: 500 }
         );
       }
@@ -137,10 +142,17 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ─────────────────────────────────────────────
-    // 5️⃣ QR CODE
-    // ─────────────────────────────────────────────
-    console.log(">>> [QR] Gerando QR");
+    // ─────────────────────────────
+    // 4️⃣ QR CODE
+    // ─────────────────────────────
+    console.log(">>> [QR] Solicitando QR Code");
+
+    await fetch(
+      `${EVO_URL}/instance/connect/${instanceName}`,
+      { headers: { apikey: EVO_KEY } }
+    );
+
+    await waitForAnyState(instanceName);
 
     const qrRes = await fetch(
       `${EVO_URL}/instance/connect/${instanceName}`,
