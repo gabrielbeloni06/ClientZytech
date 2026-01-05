@@ -10,33 +10,30 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export async function POST(req: NextRequest) {
   try {
     const { instanceName } = await req.json();
-    const cleanName = instanceName?.trim() || "instance_debug";
+    const cleanName = instanceName?.trim() || "v1_debug";
     const reqId = Date.now().toString().slice(-4);
 
-    console.log(`[${reqId}] >>> INÍCIO: ${cleanName}`);
+    console.log(`[${reqId}] >>> INÍCIO v1.8.2: ${cleanName}`);
 
     const headers = { 
         "Content-Type": "application/json", 
         "apikey": EVO_KEY 
     };
 
-    // 1. CRIAR INSTÂNCIA
+    // 1. CRIAR INSTÂNCIA (v1.8.2 é robusta aqui)
     try {
         const createRes = await fetch(`${BASE_URL}/instance/create`, {
             method: "POST",
             headers,
             body: JSON.stringify({
                 instanceName: cleanName,
-                token: crypto.randomUUID(),
-                qrcode: true,
-                integration: "WHATSAPP-BAILEYS",
-                reject_call: true
+                qrcode: true // v1 precisa disso explícito
             })
         });
 
         if (createRes.ok) {
-            console.log(`[${reqId}] >>> CRIADO (201). Aguardando boot inicial (5s)...`);
-            await delay(5000); 
+            console.log(`[${reqId}] >>> CRIADO (201). Aguardando 3s...`);
+            await delay(3000); 
         } else {
             const txt = await createRes.text();
             if(!txt.includes("already exists")) console.log(`[${reqId}] >>> INFO CREATE: ${txt}`);
@@ -45,10 +42,10 @@ export async function POST(req: NextRequest) {
         console.error(`[${reqId}] >>> ERRO CREATE:`, e);
     }
 
-    // 2. LOOP DE BUSCA (Aumentado para 8 tentativas x 3s = 24 segundos)
-    for (let i = 0; i < 8; i++) {
+    // 2. BUSCA QR CODE
+    for (let i = 0; i < 5; i++) {
         try {
-            console.log(`[${reqId}] >>> Tentativa ${i+1}/8...`);
+            console.log(`[${reqId}] >>> Tentativa ${i+1}/5...`);
 
             const connectRes = await fetch(`${BASE_URL}/instance/connect/${cleanName}`, {
                 headers,
@@ -58,16 +55,14 @@ export async function POST(req: NextRequest) {
             if (connectRes.ok) {
                 const data = await connectRes.json();
                 
-                // LOG COMPLETO PARA DEBUG (Isso vai nos mostrar o que a VPS está mandando)
-                console.log(`[${reqId}] >>> JSON RECEBIDO:`, JSON.stringify(data).substring(0, 200));
-
+                // v1.8.2 geralmente retorna o base64 direto ou dentro de qrcode
+                const qr = data?.base64 || data?.qrcode?.base64 || data?.qrcode;
+                
+                // Checa se conectou
                 if (data?.instance?.state === 'open') {
                     return NextResponse.json({ status: "connected", message: "Conectado!" });
                 }
 
-                // Tenta achar o QR em qualquer lugar
-                const qr = data?.base64 || data?.qrcode?.base64 || data?.qrcode;
-                
                 if (qr && typeof qr === 'string' && qr.length > 50) {
                     console.log(`[${reqId}] >>> QR CODE ENCONTRADO!`);
                     return NextResponse.json({ status: "qrcode", qrcode: qr });
@@ -76,16 +71,12 @@ export async function POST(req: NextRequest) {
         } catch (e) {
             console.log(`[${reqId}] >>> ERRO LOOP:`, e);
         }
-        
-        // Espera 3 segundos entre tentativas
-        await delay(3000);
+        await delay(2000);
     }
 
-    // Se acabou o tempo e ainda está count=0
-    console.log(`[${reqId}] >>> TIMEOUT. VPS ainda carregando.`);
     return NextResponse.json({ 
         status: "loading", 
-        message: "Inicializando motor do WhatsApp..." 
+        message: "Carregando..." 
     });
 
   } catch (err: any) {
