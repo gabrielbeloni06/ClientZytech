@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-// Configurações Hardcoded para garantir (já que sabemos que funcionam)
+// --- MUDANÇA AQUI: FORÇANDO O IP E A SENHA ---
+// Vamos garantir que não é erro de digitação na ENV da Vercel
 const BASE_URL = "http://46.224.182.243:8080"; 
 const EVO_KEY = "clientzy_master_key_2025";
+// ---------------------------------------------
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function POST(req: NextRequest) {
+    // ... (o resto do código continua igual, aquele último que te mandei)
   try {
     const { instanceName } = await req.json();
 
