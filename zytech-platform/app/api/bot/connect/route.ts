@@ -1,123 +1,177 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const EVO_URL = process.env.EVOLUTION_API_URL;
-const EVO_KEY = process.env.EVOLUTION_API_KEY;
+const EVO_URL = process.env.EVOLUTION_API_URL!;
+const EVO_KEY = process.env.EVOLUTION_API_KEY!;
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function getState(instanceName: string) {
+  const res = await fetch(
+    `${EVO_URL}/instance/connectionState/${instanceName}`,
+    { headers: { apikey: EVO_KEY } }
+  );
+
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data?.instance?.state;
+}
+
+async function waitForBaileys(instanceName: string, timeout = 35000) {
+  const start = Date.now();
+
+  while (Date.now() - start < timeout) {
+    const state = await getState(instanceName);
+    console.log(">>> [STATE]", state);
+
+    if (state === "connecting" || state === "pairing") {
+      return;
+    }
+
+    await delay(2000);
+  }
+
+  throw new Error("Timeout aguardando motor Baileys iniciar");
+}
 
 export async function POST(req: NextRequest) {
   try {
     const { instanceName, phoneNumber } = await req.json();
 
-    if (!instanceName) return NextResponse.json({ error: "Nome da instância obrigatório" }, { status: 400 });
-
-    console.log(`>>> [CONEXÃO] Iniciando: ${instanceName} ${phoneNumber ? `(Pairing: ${phoneNumber})` : '(QR)'}`);
-
-    try {
-        const statusRes = await fetch(`${EVO_URL}/instance/connectionState/${instanceName}`, {
-            method: 'GET',
-            headers: { 'apikey': EVO_KEY! }
-        });
-        
-        if (statusRes.ok) {
-            const statusData = await statusRes.json();
-            const state = statusData?.instance?.state;
-            
-            if (state === 'open') {
-                 return NextResponse.json({ status: 'connected', message: "Já conectado!" });
-            }
-            
-            console.log(`>>> [RESET] Apagando instância antiga (${state})...`);
-            await fetch(`${EVO_URL}/instance/delete/${instanceName}`, {
-                method: 'DELETE',
-                headers: { 'apikey': EVO_KEY! }
-            });
-            await delay(3000); 
-        }
-    } catch (e) {
-        console.log(">>> [INFO] Instância limpa (não existia).");
+    if (!instanceName) {
+      return NextResponse.json(
+        { error: "Nome da instância é obrigatório" },
+        { status: 400 }
+      );
     }
 
-    const createUrl = `${EVO_URL}/instance/create`;
-    const createPayload = {
-      instanceName: instanceName,
-      token: crypto.randomUUID(),
-      qrcode: !phoneNumber, 
-      integration: "WHATSAPP-BAILEYS",
-      reject_call: true,
-      msgBufferLimit: 50
-    };
+    console.log(
+      `>>> [START] ${instanceName} ${
+        phoneNumber ? `(PAIR ${phoneNumber})` : "(QR)"
+      }`
+    );
 
-    console.log(`>>> [CREATE] Criando instância...`);
-    const createRes = await fetch(createUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': EVO_KEY! },
-        body: JSON.stringify(createPayload)
+    // ─────────────────────────────────────────────
+    // 1️⃣ Verifica / apaga instância antiga
+    // ─────────────────────────────────────────────
+    try {
+      const state = await getState(instanceName);
+
+      if (state === "open") {
+        return NextResponse.json({
+          status: "connected",
+          message: "Instância já conectada"
+        });
+      }
+
+      if (state) {
+        console.log(`>>> [RESET] Deletando instância (${state})`);
+        await fetch(`${EVO_URL}/instance/delete/${instanceName}`, {
+          method: "DELETE",
+          headers: { apikey: EVO_KEY }
+        });
+        await delay(5000);
+      }
+    } catch {
+      console.log(">>> [INFO] Instância inexistente");
+    }
+
+    // ─────────────────────────────────────────────
+    // 2️⃣ Cria instância
+    // ─────────────────────────────────────────────
+    console.log(">>> [CREATE] Criando instância");
+
+    await fetch(`${EVO_URL}/instance/create`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: EVO_KEY
+      },
+      body: JSON.stringify({
+        instanceName,
+        token: crypto.randomUUID(),
+        qrcode: !phoneNumber,
+        integration: "WHATSAPP-BAILEYS",
+        reject_call: true,
+        msgBufferLimit: 50
+      })
     });
 
-    if (!createRes.ok) {
-        const errTxt = await createRes.text();
-        console.log(`>>> [CREATE INFO] ${errTxt}`);
-    }
+    // ─────────────────────────────────────────────
+    // 3️⃣ Espera motor iniciar
+    // ─────────────────────────────────────────────
+    await waitForBaileys(instanceName);
 
+    // ─────────────────────────────────────────────
+    // 4️⃣ PAIRING POR NÚMERO
+    // ─────────────────────────────────────────────
     if (phoneNumber) {
-        const cleanPhone = phoneNumber.replace(/\D/g, '');
-        console.log(`>>> [PAIRING] Aguardando motor iniciar para pedir código para: ${cleanPhone}...`);
-        
-        await delay(5000); 
+      const cleanPhone = phoneNumber.replace(/\D/g, "");
+      console.log(">>> [PAIRING] Solicitando código:", cleanPhone);
 
-        const connectUrl = `${EVO_URL}/instance/connect/${instanceName}?number=${cleanPhone}`;
-        
-        console.log(`>>> [PAIRING REQUEST] ${connectUrl}`);
-        
-        const pairRes = await fetch(connectUrl, {
-            method: 'GET',
-            headers: { 'apikey': EVO_KEY! }
-        });
-
-        if (!pairRes.ok) {
-            const errText = await pairRes.text();
-            console.error(`>>> [PAIRING ERROR] ${pairRes.status}: ${errText}`);
-            return NextResponse.json({ error: `Erro da Evolution: ${errText}` }, { status: 500 });
+      const pairRes = await fetch(
+        `${EVO_URL}/instance/connect/${instanceName}?number=${cleanPhone}`,
+        {
+          method: "GET",
+          headers: { apikey: EVO_KEY }
         }
+      );
 
-        const pairData = await pairRes.json();
-        console.log(">>> [PAIRING RESPONSE]", JSON.stringify(pairData));
+      const pairData = await pairRes.json();
+      console.log(">>> [PAIR RESPONSE]", pairData);
 
-        const code = pairData.code || pairData.pairingCode;
+      const code =
+        pairData?.code ||
+        pairData?.pairingCode ||
+        pairData?.data?.code;
 
-        if (code) {
-            return NextResponse.json({ status: 'pairing', code: code });
-        }
-        
-        const qrFallback = pairData.base64 || pairData.qrcode?.base64 || pairData.qrcode;
-        if (qrFallback && typeof qrFallback === 'string' && qrFallback.length > 100) {
-             return NextResponse.json({ 
-                 status: 'qrcode', 
-                 qrcode: qrFallback, 
-                 message: "A API retornou QR Code em vez de código numérico." 
-             });
-        }
-        
-        return NextResponse.json({ 
-            error: `API respondeu sem código. Resposta bruta: ${JSON.stringify(pairData)}` 
-        }, { status: 500 });
+      if (!code) {
+        return NextResponse.json(
+          { error: "Evolution não retornou pairing code" },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        status: "pairing",
+        code
+      });
     }
 
-    await delay(2000);
-    const connectUrl = `${EVO_URL}/instance/connect/${instanceName}`;
-    const connectRes = await fetch(connectUrl, { headers: { 'apikey': EVO_KEY! } });
-    const connectData = await connectRes.json();
-    const qrCode = connectData.base64 || connectData.qrcode?.base64 || connectData.qrcode;
+    // ─────────────────────────────────────────────
+    // 5️⃣ QR CODE
+    // ─────────────────────────────────────────────
+    console.log(">>> [QR] Gerando QR");
 
-    if (qrCode) {
-        return NextResponse.json({ status: 'qrcode', qrcode: qrCode });
+    const qrRes = await fetch(
+      `${EVO_URL}/instance/connect/${instanceName}`,
+      { headers: { apikey: EVO_KEY } }
+    );
+
+    const qrData = await qrRes.json();
+    console.log(">>> [QR RAW]", qrData);
+
+    const qr =
+      qrData?.base64 ||
+      qrData?.qrcode?.base64 ||
+      qrData?.qrcode;
+
+    if (!qr) {
+      return NextResponse.json(
+        { error: "QR Code não retornado" },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({ error: "Não foi possível gerar QR ou Código." }, { status: 500 });
+    return NextResponse.json({
+      status: "qrcode",
+      qrcode: qr
+    });
 
-  } catch (error: any) {
-    console.error("Erro Geral:", error);
-    return NextResponse.json({ error: `Erro Interno: ${error.message}` }, { status: 500 });
+  } catch (err: any) {
+    console.error(">>> [ERROR]", err);
+    return NextResponse.json(
+      { error: err.message || "Erro interno" },
+      { status: 500 }
+    );
   }
 }
