@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
             method: 'DELETE',
             headers: { 'apikey': EVO_KEY! }
         });
-        await delay(2000);
+        await delay(3000); 
     }
 
     const createUrl = `${EVO_URL}/instance/create`;
@@ -51,14 +51,15 @@ export async function POST(req: NextRequest) {
 
     if (!createRes.ok) {
         const errText = await createRes.text();
-        if (!errText.includes("already")) {
+        if (!errText.includes("already") && !errText.includes("exists")) {
              return NextResponse.json({ error: `Erro ao criar: ${errText}` }, { status: 500 });
         }
     }
+
     let qrCode = null;
     let pairingCode = null;
     let attempts = 0;
-    const maxAttempts = 10;
+    const maxAttempts = 20;
 
     while (attempts < maxAttempts && !qrCode) {
         attempts++;
@@ -73,10 +74,14 @@ export async function POST(req: NextRequest) {
 
             if (connectRes.ok) {
                 const connectData = await connectRes.json();
+
                 qrCode = connectData.base64 || connectData.qrcode?.base64 || connectData.qrcode;
                 pairingCode = connectData.code || connectData.pairingCode;
                 
                 if (qrCode) break; 
+            } else {
+                const errTxt = await connectRes.text();
+                console.log(`>>> [CONNECT FAIL] ${connectRes.status}: ${errTxt}`);
             }
         } catch (e) {
             console.error(`>>> [CONNECT ERROR] Falha na tentativa ${attempts}:`, e);
@@ -93,7 +98,7 @@ export async function POST(req: NextRequest) {
         });
     }
 
-    return NextResponse.json({ error: "A API demorou demais para iniciar o QR Code. Por favor, tente clicar novamente." }, { status: 504 });
+    return NextResponse.json({ error: "A API demorou demais para iniciar o QR Code (Timeout de 40s). Verifique os logs da VPS." }, { status: 504 });
 
   } catch (error: any) {
     console.error("Erro Geral Route:", error);
