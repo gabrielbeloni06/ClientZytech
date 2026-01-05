@@ -19,43 +19,44 @@ export async function POST(req: NextRequest) {
 
     const cleanName = instanceName.trim();
     
-    // Headers padrão
-    const headers = {
-        "Content-Type": "application/json",
-        "apikey": EVO_KEY
+    // Configuração para NÃO FAZER CACHE (Isso resolve o loading infinito)
+    const fetchOptions: RequestInit = {
+        headers: {
+            "Content-Type": "application/json",
+            "apikey": EVO_KEY
+        },
+        cache: 'no-store', // <--- O SEGREDO ESTÁ AQUI
+        next: { revalidate: 0 }
     };
 
     console.log(`>>> [INIT] Processando: ${cleanName}`);
 
-    // 1. VERIFICAÇÃO INTELIGENTE (Sem deletar à toa)
-    // Tenta buscar informações da instância para decidir se cria ou recicla
+    // 1. VERIFICAÇÃO INTELIGENTE
     let needsCreation = false;
 
     try {
-        const checkRes = await fetch(`${BASE_URL}/instance/connectionState/${cleanName}`, { headers });
+        const checkRes = await fetch(`${BASE_URL}/instance/connectionState/${cleanName}`, fetchOptions);
         
         if (checkRes.ok) {
             const data = await checkRes.json();
-            // Se já estiver conectado, retorna sucesso na hora
             if (data?.instance?.state === 'open') {
                 return NextResponse.json({ status: "connected", message: "Whatsapp já conectado!" });
             }
-            console.log(">>> [INFO] Instância existe mas está desconectada. Reaproveitando...");
+            console.log(">>> [INFO] Instância existe desconectada.");
         } else if (checkRes.status === 404) {
-            console.log(">>> [INFO] Instância não encontrada. Criando nova...");
+            console.log(">>> [INFO] Instância não existe. Criando...");
             needsCreation = true;
         }
     } catch (e) {
-        // Se der erro de rede ao checar, tentamos criar por garantia
         needsCreation = true;
     }
 
-    // 2. CRIAÇÃO (Apenas se necessário)
+    // 2. CRIAÇÃO (Se necessário)
     if (needsCreation) {
         try {
             const createRes = await fetch(`${BASE_URL}/instance/create`, {
+                ...fetchOptions,
                 method: "POST",
-                headers,
                 body: JSON.stringify({
                     instanceName: cleanName,
                     token: crypto.randomUUID(),
@@ -66,14 +67,8 @@ export async function POST(req: NextRequest) {
             });
 
             if (createRes.ok) {
-                console.log(">>> [CREATED] Nova instância iniciada.");
-                // Delay para o Chrome subir (obrigatório na criação)
+                console.log(">>> [CREATED] Criado com sucesso. Aguardando boot (3s)...");
                 await delay(3000);
-            } else {
-                const errText = await createRes.text();
-                if (!errText.includes("already exists")) {
-                    console.error(`>>> [CREATE ERROR] ${errText}`);
-                }
             }
         } catch (e) {
             console.error(">>> [CREATE FAIL]", e);
@@ -81,38 +76,35 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. BUSCA DO QR CODE (Polling Otimizado)
-    // Tenta 5 vezes. Se a instância já existia, isso é rápido.
+    // Loop de 5 tentativas
     for (let i = 0; i < 5; i++) {
         try {
-            const connectRes = await fetch(`${BASE_URL}/instance/connect/${cleanName}`, { headers });
+            // Importante: Usamos o fetchOptions com 'no-store' aqui também
+            const connectRes = await fetch(`${BASE_URL}/instance/connect/${cleanName}`, fetchOptions);
 
             if (connectRes.ok) {
                 const data = await connectRes.json();
                 
-                // Checagem dupla de conexão
                 if (data?.instance?.state === 'open') {
                     return NextResponse.json({ status: "connected", message: "Conectado!" });
                 }
 
-                // Pega o QR Code (suporte a v2 e v1)
                 const qr = data?.base64 || data?.qrcode?.base64 || data?.qrcode;
                 
                 if (qr && typeof qr === 'string' && qr.length > 50) {
-                    console.log(">>> [QR FOUND] QR Code retornado com sucesso.");
+                    console.log(">>> [QR FOUND] Enviando para o frontend.");
                     return NextResponse.json({ status: "qrcode", qrcode: qr });
+                } else {
+                    console.log(`>>> [WAITING] Tentativa ${i+1}/5 - VPS processando...`);
                 }
             }
         } catch (e) {
-            console.log(`>>> [POLLING ERROR] ${e}`);
+            console.log(`>>> [RETRY ERROR] ${e}`);
         }
         
-        // Se não achou ainda, espera um pouco.
-        // Se foi criada agora, o Chrome demora. Se já existia, é rápido.
         await delay(2000);
     }
 
-    // Se saiu do loop, o Chrome ainda está subindo.
-    // Retornamos 'loading' pro frontend tentar de novo sem erro.
     return NextResponse.json({ 
         status: "loading", 
         message: "Inicializando WhatsApp..." 
