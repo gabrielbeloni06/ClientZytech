@@ -1,113 +1,116 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
-export const maxDuration = 60; // 60s timeout
 
 const EVO_URL = process.env.EVOLUTION_API_URL!;
 // Remove barra final se houver
 const BASE_URL = EVO_URL?.endsWith('/') ? EVO_URL.slice(0, -1) : EVO_URL;
 const EVO_KEY = process.env.EVOLUTION_API_KEY!;
 
+// Delay auxiliar
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function POST(req: NextRequest) {
   try {
     const { instanceName } = await req.json();
 
-    if (!instanceName) return NextResponse.json({ error: "Nome obrigatório" }, { status: 400 });
+    if (!instanceName) return NextResponse.json({ error: "Nome da instância obrigatório" }, { status: 400 });
 
-    console.log(`>>> [CONEXÃO RÁPIDA] Processando: ${instanceName}`);
+    console.log(`>>> [CONEXÃO] Checando: ${instanceName}`);
 
-    // 1. CHECAGEM DE ESTADO (Para ser instantâneo se já existir)
+    // 1. VERIFICAR STATUS ATUAL
+    let state = 'undefined';
     try {
         const stateRes = await fetch(`${BASE_URL}/instance/connectionState/${instanceName}`, {
-            method: 'GET',
-            headers: { 'apikey': EVO_KEY }
+             headers: { 'apikey': EVO_KEY }
         });
-
         if (stateRes.ok) {
-            const stateData = await stateRes.json();
-            const state = stateData?.instance?.state;
-
-            if (state === 'open') {
-                return NextResponse.json({ status: "connected", message: "Já conectado!" });
-            }
-            
-            console.log(`>>> [STATUS] Instância existe (Estado: ${state}). Pulando criação...`);
-            // Se existe e não está open, pulamos direto para o passo de pegar o QR Code
-        } else {
-            // Se deu 404 (Não existe), então criamos
-            console.log(`>>> [STATUS] Instância não encontrada. Criando...`);
-            throw new Error("Not Found");
+            const data = await stateRes.json();
+            state = data?.instance?.state || 'close';
         }
     } catch (e) {
-        // 2. CRIAÇÃO (Só acontece se não existir)
-        const createUrl = `${BASE_URL}/instance/create`;
-        const createPayload = {
-          instanceName: instanceName,
-          token: crypto.randomUUID(),
-          qrcode: true,
-          integration: "WHATSAPP-BAILEYS",
-          reject_call: true,
-          msgBufferLimit: 50
-        };
+        state = 'undefined';
+    }
 
-        const createRes = await fetch(createUrl, {
+    console.log(`>>> [STATUS] Estado atual: ${state}`);
+
+    // CENÁRIO A: Já conectado
+    if (state === 'open') {
+        return NextResponse.json({ status: "connected", message: "Conectado!" });
+    }
+
+    // CENÁRIO B: Instância Travada ou Inexistente -> RESET NUCLEAR
+    // Se não estiver 'connecting' (boot) nem 'open', assumimos que está quebrada ou não existe.
+    if (state !== 'connecting') {
+        console.log(`>>> [RESET] Estado '${state}' inválido. Recriando do zero...`);
+        
+        // 1. Deleta
+        try {
+            await fetch(`${BASE_URL}/instance/delete/${instanceName}`, {
+                method: "DELETE",
+                headers: { 'apikey': EVO_KEY }
+            });
+            await delay(2000); // Tempo pro banco limpar
+        } catch (e) {}
+
+        // 2. Cria
+        const createRes = await fetch(`${BASE_URL}/instance/create`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "apikey": EVO_KEY },
-            body: JSON.stringify(createPayload)
+            body: JSON.stringify({
+                instanceName: instanceName,
+                token: crypto.randomUUID(),
+                qrcode: true,
+                integration: "WHATSAPP-BAILEYS",
+                reject_call: true,
+                msgBufferLimit: 50
+            })
         });
 
-        if (!createRes.ok) {
-            const errTxt = await createRes.text();
-            console.log(`>>> [CREATE ERROR] ${errTxt}`);
+        if (createRes.ok) {
+            // Retorna LOADING para o frontend esperar o boot (que demora uns 10s)
+            // Não esperamos aqui para não dar timeout na Vercel
+            return NextResponse.json({ status: "loading", message: "Servidor iniciando..." });
         } else {
-            // Se criou agora, precisamos esperar o Chrome subir
-            console.log(">>> [WARMUP] Instância criada, aguardando boot (5s)...");
-            await delay(5000);
+            const err = await createRes.text();
+            console.error(">>> [CREATE ERROR]", err);
+            // Se der erro de "already exists", tentamos conectar no próximo passo
         }
     }
 
-    // 3. BUSCA O QR CODE (Tenta algumas vezes rapidinho)
-    // Se já existia, isso deve ser instantâneo (resposta < 1s)
-    let qrCode = null;
-    
-    for (let i = 0; i < 5; i++) {
+    // CENÁRIO C: Instância existe (ou acabou de ser recriada) -> Tenta pegar QR
+    // Tenta por ~6 segundos (seguro para Vercel)
+    for (let i = 0; i < 4; i++) {
         try {
             const connectRes = await fetch(`${BASE_URL}/instance/connect/${instanceName}`, {
-                method: 'GET',
                 headers: { 'apikey': EVO_KEY }
             });
 
             if (connectRes.ok) {
                 const data = await connectRes.json();
                 
-                // Se vier count:0, ainda está carregando, tenta de novo
+                // Se vier count:0, ainda está no boot
                 if (data.count === 0) {
-                    console.log(">>> [WAIT] count:0...");
+                    console.log(">>> [WAIT] Booting Chrome...");
                 } else {
                     const qr = data?.base64 || data?.qrcode?.base64 || data?.qrcode;
                     if (qr && typeof qr === 'string' && qr.length > 50) {
-                        qrCode = qr;
-                        break;
+                        return NextResponse.json({ status: "qrcode", qrcode: qr });
                     }
                 }
             }
-        } catch (err) {
-            console.log(">>> [RETRY QR]", err);
+        } catch (e) {
+            console.log(">>> [RETRY QR]", e);
         }
         await delay(1500);
     }
 
-    if (qrCode) {
-        return NextResponse.json({ status: "qrcode", qrcode: qrCode });
-    }
-
-    // Se falhar, manda o erro, mas não crasha
-    return NextResponse.json({ error: "Ainda carregando... Tente clicar novamente em 5 segundos." }, { status: 408 });
+    // Se saiu do loop sem QR, é porque ainda está bootando.
+    // Mandamos "loading" para o frontend tentar de novo em 2s.
+    return NextResponse.json({ status: "loading", message: "Gerando QR Code..." });
 
   } catch (err: any) {
-    console.error(">>> [FATAL ERROR]", err);
-    return NextResponse.json({ error: err.message || "Erro interno" }, { status: 500 });
+    console.error(">>> [FATAL]", err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
