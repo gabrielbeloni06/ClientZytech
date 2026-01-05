@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const EVO_URL = process.env.EVOLUTION_API_URL || "";
-const BASE_URL = EVO_URL.trim().replace(/\/$/, "");
-const EVO_KEY = process.env.EVOLUTION_API_KEY?.trim() || "";
+// Configurações Hardcoded para garantir (já que sabemos que funcionam)
+const BASE_URL = "http://46.224.182.243:8080"; 
+const EVO_KEY = "clientzy_master_key_2025";
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -12,99 +12,92 @@ export async function POST(req: NextRequest) {
   try {
     const { instanceName } = await req.json();
 
-    if (!BASE_URL || !EVO_KEY) {
-        return NextResponse.json({ error: "Configuração da API incompleta." }, { status: 500 });
-    }
     if (!instanceName) return NextResponse.json({ error: "Nome obrigatório" }, { status: 400 });
 
-    const cleanName = instanceName.trim();
-    
-    // Configuração para NÃO FAZER CACHE (Isso resolve o loading infinito)
-    const fetchOptions: RequestInit = {
-        headers: {
-            "Content-Type": "application/json",
-            "apikey": EVO_KEY
+    // Limpa o nome para evitar erros de URL
+    const cleanName = instanceName.trim().replace(/\s/g, '');
+
+    // Configuração CRUCIAL para não fazer cache e evitar loop infinito
+    const noCacheConfig: RequestInit = {
+        headers: { 
+            "Content-Type": "application/json", 
+            "apikey": EVO_KEY 
         },
-        cache: 'no-store', // <--- O SEGREDO ESTÁ AQUI
+        cache: 'no-store',
         next: { revalidate: 0 }
     };
 
-    console.log(`>>> [INIT] Processando: ${cleanName}`);
+    console.log(`>>> [INIT] Processando instância: ${cleanName}`);
 
-    // 1. VERIFICAÇÃO INTELIGENTE
-    let needsCreation = false;
-
+    // =================================================================================
+    // PASSO 1: CRIAÇÃO FORÇADA (Create First Strategy)
+    // =================================================================================
+    // Tentamos criar sempre. Se der erro de "já existe", apenas ignoramos.
     try {
-        const checkRes = await fetch(`${BASE_URL}/instance/connectionState/${cleanName}`, fetchOptions);
-        
-        if (checkRes.ok) {
-            const data = await checkRes.json();
-            if (data?.instance?.state === 'open') {
-                return NextResponse.json({ status: "connected", message: "Whatsapp já conectado!" });
+        const createRes = await fetch(`${BASE_URL}/instance/create`, {
+            ...noCacheConfig,
+            method: "POST",
+            body: JSON.stringify({
+                instanceName: cleanName,
+                token: crypto.randomUUID(),
+                qrcode: true,
+                integration: "WHATSAPP-BAILEYS",
+                reject_call: true
+            })
+        });
+
+        // Se criou agora (201) ou deu ok (200), esperamos o Chrome subir
+        if (createRes.ok) {
+            console.log(">>> [CRIADO] Instância iniciada. Aguardando motor (4s)...");
+            await delay(4000); 
+        } else {
+            // Se der erro, lemos para ver se é "Already exists"
+            const errorTxt = await createRes.text();
+            if (!errorTxt.includes("already exists")) {
+                console.log(`>>> [CREATE INFO] ${errorTxt}`);
+            } else {
+                console.log(">>> [INFO] Instância já existia. Buscando QR Code...");
             }
-            console.log(">>> [INFO] Instância existe desconectada.");
-        } else if (checkRes.status === 404) {
-            console.log(">>> [INFO] Instância não existe. Criando...");
-            needsCreation = true;
         }
     } catch (e) {
-        needsCreation = true;
+        console.error(">>> [CREATE FAIL] Erro de rede ao tentar criar:", e);
     }
 
-    // 2. CRIAÇÃO (Se necessário)
-    if (needsCreation) {
+    // =================================================================================
+    // PASSO 2: BUSCA DO QR CODE (Polling)
+    // =================================================================================
+    // Tentamos 4 vezes (Total aprox. 8 a 10 segundos)
+    for (let i = 0; i < 4; i++) {
         try {
-            const createRes = await fetch(`${BASE_URL}/instance/create`, {
-                ...fetchOptions,
-                method: "POST",
-                body: JSON.stringify({
-                    instanceName: cleanName,
-                    token: crypto.randomUUID(),
-                    qrcode: true,
-                    integration: "WHATSAPP-BAILEYS",
-                    reject_call: true
-                })
-            });
-
-            if (createRes.ok) {
-                console.log(">>> [CREATED] Criado com sucesso. Aguardando boot (3s)...");
-                await delay(3000);
-            }
-        } catch (e) {
-            console.error(">>> [CREATE FAIL]", e);
-        }
-    }
-
-    // 3. BUSCA DO QR CODE (Polling Otimizado)
-    // Loop de 5 tentativas
-    for (let i = 0; i < 5; i++) {
-        try {
-            // Importante: Usamos o fetchOptions com 'no-store' aqui também
-            const connectRes = await fetch(`${BASE_URL}/instance/connect/${cleanName}`, fetchOptions);
+            const connectRes = await fetch(`${BASE_URL}/instance/connect/${cleanName}`, noCacheConfig);
 
             if (connectRes.ok) {
                 const data = await connectRes.json();
                 
+                // Caso 1: Já conectado
                 if (data?.instance?.state === 'open') {
                     return NextResponse.json({ status: "connected", message: "Conectado!" });
                 }
 
+                // Caso 2: QR Code encontrado
+                // A Evolution v2 pode retornar o base64 direto na raiz ou dentro de 'qrcode'
                 const qr = data?.base64 || data?.qrcode?.base64 || data?.qrcode;
                 
                 if (qr && typeof qr === 'string' && qr.length > 50) {
-                    console.log(">>> [QR FOUND] Enviando para o frontend.");
+                    console.log(">>> [SUCESSO] QR Code enviado para o frontend.");
                     return NextResponse.json({ status: "qrcode", qrcode: qr });
-                } else {
-                    console.log(`>>> [WAITING] Tentativa ${i+1}/5 - VPS processando...`);
                 }
             }
         } catch (e) {
-            console.log(`>>> [RETRY ERROR] ${e}`);
+            console.log(`>>> [RETRY ${i+1}] Erro ao buscar QR:`, e);
         }
         
+        // Espera 2s antes da próxima tentativa
         await delay(2000);
     }
 
+    // Se saiu do loop sem QR Code, retornamos loading para o frontend tentar de novo
+    // Isso evita erro na tela do usuário
     return NextResponse.json({ 
         status: "loading", 
         message: "Inicializando WhatsApp..." 
