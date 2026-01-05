@@ -2,44 +2,39 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-// --- MUDANÇA AQUI: FORÇANDO O IP E A SENHA ---
-// Vamos garantir que não é erro de digitação na ENV da Vercel
+// HARDCODED PARA ELIMINAR ERRO DE ENV
 const BASE_URL = "http://46.224.182.243:8080"; 
 const EVO_KEY = "clientzy_master_key_2025";
-// ---------------------------------------------
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function POST(req: NextRequest) {
-    // ... (o resto do código continua igual, aquele último que te mandei)
   try {
     const { instanceName } = await req.json();
+    
+    // Gera um nome limpo e um ID único para o log
+    const cleanName = instanceName?.trim() || "sem_nome";
+    const reqId = Date.now().toString().slice(-4);
 
-    if (!instanceName) return NextResponse.json({ error: "Nome obrigatório" }, { status: 400 });
+    console.log(`[${reqId}] >>> INICIANDO DEBUG PARA: ${cleanName}`);
 
-    // Limpa o nome para evitar erros de URL
-    const cleanName = instanceName.trim().replace(/\s/g, '');
-
-    // Configuração CRUCIAL para não fazer cache e evitar loop infinito
-    const noCacheConfig: RequestInit = {
-        headers: { 
-            "Content-Type": "application/json", 
-            "apikey": EVO_KEY 
-        },
-        cache: 'no-store',
-        next: { revalidate: 0 }
+    // Headers sem cache
+    const headers = { 
+        "Content-Type": "application/json", 
+        "apikey": EVO_KEY 
     };
+    
+    // URL com timestamp para evitar cache do Next.js
+    const timeParam = `?t=${Date.now()}`;
 
-    console.log(`>>> [INIT] Processando instância: ${cleanName}`);
-
-    // =================================================================================
-    // PASSO 1: CRIAÇÃO FORÇADA (Create First Strategy)
-    // =================================================================================
-    // Tentamos criar sempre. Se der erro de "já existe", apenas ignoramos.
+    // 1. CRIAÇÃO ---------------------------------------------------
     try {
-        const createRes = await fetch(`${BASE_URL}/instance/create`, {
-            ...noCacheConfig,
+        console.log(`[${reqId}] >>> TENTANDO CRIAR (POST /instance/create)`);
+        
+        const createRes = await fetch(`${BASE_URL}/instance/create${timeParam}`, {
             method: "POST",
+            headers,
+            cache: 'no-store',
             body: JSON.stringify({
                 instanceName: cleanName,
                 token: crypto.randomUUID(),
@@ -49,61 +44,70 @@ export async function POST(req: NextRequest) {
             })
         });
 
-        // Se criou agora (201) ou deu ok (200), esperamos o Chrome subir
+        const createText = await createRes.text();
+        console.log(`[${reqId}] >>> RESPOSTA CREATE (${createRes.status}): ${createText.substring(0, 200)}...`);
+        
+        // Se criou (201) ou já existe (403), seguimos.
         if (createRes.ok) {
-            console.log(">>> [CRIADO] Instância iniciada. Aguardando motor (4s)...");
-            await delay(4000); 
+            console.log(`[${reqId}] >>> SUCESSO. Aguardando 5s para o Chrome subir...`);
+            await delay(5000);
+        } else if (createRes.status === 403) {
+            console.log(`[${reqId}] >>> JÁ EXISTE. Buscando QR Code direto...`);
         } else {
-            // Se der erro, lemos para ver se é "Already exists"
-            const errorTxt = await createRes.text();
-            if (!errorTxt.includes("already exists")) {
-                console.log(`>>> [CREATE INFO] ${errorTxt}`);
-            } else {
-                console.log(">>> [INFO] Instância já existia. Buscando QR Code...");
-            }
+             // Se deu outro erro (ex: 500, 400), paramos.
+             return NextResponse.json({ error: `Erro VPS: ${createText}` }, { status: 500 });
         }
-    } catch (e) {
-        console.error(">>> [CREATE FAIL] Erro de rede ao tentar criar:", e);
+
+    } catch (e: any) {
+        console.error(`[${reqId}] >>> ERRO FATAL NO FETCH CREATE:`, e.message);
+        return NextResponse.json({ error: "Falha de conexão Vercel -> VPS" }, { status: 500 });
     }
 
-    // =================================================================================
-    // PASSO 2: BUSCA DO QR CODE (Polling)
-    // =================================================================================
-    // Tentamos 4 vezes (Total aprox. 8 a 10 segundos)
-    for (let i = 0; i < 4; i++) {
+    // 2. BUSCA DO QR CODE (Loop de Debug) -------------------------
+    for (let i = 0; i < 5; i++) {
         try {
-            const connectRes = await fetch(`${BASE_URL}/instance/connect/${cleanName}`, noCacheConfig);
+            console.log(`[${reqId}] >>> BUSCA QR TENTATIVA ${i+1}/5`);
+            
+            // Fetch do connect
+            const connectRes = await fetch(`${BASE_URL}/instance/connect/${cleanName}${timeParam}`, {
+                headers,
+                cache: 'no-store'
+            });
 
-            if (connectRes.ok) {
+            if (!connectRes.ok) {
+                console.log(`[${reqId}] >>> ERRO HTTP CONNECT: ${connectRes.status}`);
+            } else {
                 const data = await connectRes.json();
                 
-                // Caso 1: Já conectado
+                // VAMOS LOGAR O JSON INTEIRO PARA VER ONDE ESTÁ O QR CODE
+                // Limitamos a 200 chars para não estourar o log se vier base64 gigante
+                const jsonString = JSON.stringify(data);
+                console.log(`[${reqId}] >>> JSON RECEBIDO: ${jsonString.substring(0, 300)}...`);
+
+                // Checagens
                 if (data?.instance?.state === 'open') {
-                    return NextResponse.json({ status: "connected", message: "Conectado!" });
+                     return NextResponse.json({ status: "connected", message: "Conectado!" });
                 }
 
-                // Caso 2: QR Code encontrado
-                // A Evolution v2 pode retornar o base64 direto na raiz ou dentro de 'qrcode'
+                // Tenta achar o QR Code em todos os lugares possíveis
                 const qr = data?.base64 || data?.qrcode?.base64 || data?.qrcode;
-                
+
                 if (qr && typeof qr === 'string' && qr.length > 50) {
-                    console.log(">>> [SUCESSO] QR Code enviado para o frontend.");
+                    console.log(`[${reqId}] >>> QR CODE ENCONTRADO! ENVIANDO...`);
                     return NextResponse.json({ status: "qrcode", qrcode: qr });
                 }
             }
+
         } catch (e) {
-            console.log(`>>> [RETRY ${i+1}] Erro ao buscar QR:`, e);
+            console.log(`[${reqId}] >>> ERRO NO LOOP:`, e);
         }
-        
-        // Espera 2s antes da próxima tentativa
         await delay(2000);
     }
 
-    // Se saiu do loop sem QR Code, retornamos loading para o frontend tentar de novo
-    // Isso evita erro na tela do usuário
+    console.log(`[${reqId}] >>> TIMEOUT. NENHUM QR CODE ENCONTRADO APÓS 5 TENTATIVAS.`);
     return NextResponse.json({ 
         status: "loading", 
-        message: "Inicializando WhatsApp..." 
+        message: "Aguardando VPS gerar imagem..." 
     });
 
   } catch (err: any) {
