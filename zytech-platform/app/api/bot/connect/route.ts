@@ -10,30 +10,30 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export async function POST(req: NextRequest) {
   try {
     const { instanceName } = await req.json();
-    const cleanName = instanceName?.trim() || "v1_debug";
+    const cleanName = instanceName?.trim() || "final_test";
     const reqId = Date.now().toString().slice(-4);
 
-    console.log(`[${reqId}] >>> INÍCIO v1.8.2: ${cleanName}`);
+    console.log(`[${reqId}] >>> INÍCIO v2.1.1 (No-Sandbox): ${cleanName}`);
 
-    const headers = { 
-        "Content-Type": "application/json", 
-        "apikey": EVO_KEY 
-    };
+    const headers = { "Content-Type": "application/json", "apikey": EVO_KEY };
 
-    // 1. CRIAR INSTÂNCIA (v1.8.2 é robusta aqui)
+    // 1. CRIAR
     try {
         const createRes = await fetch(`${BASE_URL}/instance/create`, {
             method: "POST",
             headers,
             body: JSON.stringify({
                 instanceName: cleanName,
-                qrcode: true // v1 precisa disso explícito
+                token: crypto.randomUUID(),
+                qrcode: true,
+                integration: "WHATSAPP-BAILEYS",
+                reject_call: true
             })
         });
 
         if (createRes.ok) {
-            console.log(`[${reqId}] >>> CRIADO (201). Aguardando 3s...`);
-            await delay(3000); 
+            console.log(`[${reqId}] >>> CRIADO (201). Aguardando Chrome (5s)...`);
+            await delay(5000); 
         } else {
             const txt = await createRes.text();
             if(!txt.includes("already exists")) console.log(`[${reqId}] >>> INFO CREATE: ${txt}`);
@@ -43,10 +43,9 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. BUSCA QR CODE
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
         try {
-            console.log(`[${reqId}] >>> Tentativa ${i+1}/5...`);
-
+            console.log(`[${reqId}] >>> Tentativa ${i+1}/6...`);
             const connectRes = await fetch(`${BASE_URL}/instance/connect/${cleanName}`, {
                 headers,
                 cache: 'no-store'
@@ -55,14 +54,17 @@ export async function POST(req: NextRequest) {
             if (connectRes.ok) {
                 const data = await connectRes.json();
                 
-                // v1.8.2 geralmente retorna o base64 direto ou dentro de qrcode
-                const qr = data?.base64 || data?.qrcode?.base64 || data?.qrcode;
-                
-                // Checa se conectou
+                // Debug do JSON
+                const jsonStr = JSON.stringify(data);
+                console.log(`[${reqId}] >>> JSON: ${jsonStr.substring(0, 100)}...`);
+
                 if (data?.instance?.state === 'open') {
                     return NextResponse.json({ status: "connected", message: "Conectado!" });
                 }
 
+                // v2.1.1 retorna base64 na raiz ou dentro de qrcode
+                const qr = data?.base64 || data?.qrcode?.base64 || data?.qrcode;
+                
                 if (qr && typeof qr === 'string' && qr.length > 50) {
                     console.log(`[${reqId}] >>> QR CODE ENCONTRADO!`);
                     return NextResponse.json({ status: "qrcode", qrcode: qr });
@@ -71,16 +73,15 @@ export async function POST(req: NextRequest) {
         } catch (e) {
             console.log(`[${reqId}] >>> ERRO LOOP:`, e);
         }
-        await delay(2000);
+        await delay(3000);
     }
 
     return NextResponse.json({ 
         status: "loading", 
-        message: "Carregando..." 
+        message: "Inicializando..." 
     });
 
   } catch (err: any) {
-    console.error(">>> FATAL:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
