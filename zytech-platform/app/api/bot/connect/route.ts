@@ -13,6 +13,33 @@ export async function POST(req: NextRequest) {
 
     console.log(`>>> [CONEXÃO] Iniciando para: ${instanceName}`);
 
+    try {
+        const statusUrl = `${EVO_URL}/instance/connectionState/${instanceName}`;
+        const statusRes = await fetch(statusUrl, {
+            method: 'GET',
+            headers: { 'apikey': EVO_KEY! }
+        });
+
+        if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            const state = statusData?.instance?.state;
+
+            if (state === 'open') {
+                return NextResponse.json({ status: 'connected', message: "Instância já conectada e pronta!" });
+            }
+
+            console.log(`>>> [FORCE DELETE] Instância estava no estado '${state}'. Apagando para recriar limpo...`);
+            await fetch(`${EVO_URL}/instance/delete/${instanceName}`, {
+                method: 'DELETE',
+                headers: { 'apikey': EVO_KEY! }
+            });
+            
+            await delay(3000);
+        }
+    } catch (e) {
+        console.log(">>> [CHECK IGNORED] Instância provavelmente não existia.");
+    }
+
     const createUrl = `${EVO_URL}/instance/create`;
     const createPayload = {
       instanceName: instanceName,
@@ -21,21 +48,16 @@ export async function POST(req: NextRequest) {
       integration: "WHATSAPP-BAILEYS"
     };
 
-    try {
-        const createRes = await fetch(createUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': EVO_KEY! },
-            body: JSON.stringify(createPayload)
-        });
-        
-        if (!createRes.ok) {
-            const err = await createRes.text();
-            console.log(`>>> [CREATE INFO] Status: ${createRes.status} (Provavelmente já existe)`);
-        } else {
-            console.log(`>>> [CREATE SUCCESS] Instância criada.`);
-        }
-    } catch (e) {
-        console.error(">>> [CREATE ERROR]", e);
+    console.log(`>>> [CREATE] Criando nova instância...`);
+    const createRes = await fetch(createUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': EVO_KEY! },
+        body: JSON.stringify(createPayload)
+    });
+
+    if (!createRes.ok) {
+        const errText = await createRes.text();
+        console.log(`>>> [CREATE WARNING] ${createRes.status} - ${errText}`);
     }
 
     let qrCode = null;
@@ -57,14 +79,15 @@ export async function POST(req: NextRequest) {
             if (connectRes.ok) {
                 const connectData = await connectRes.json();
                 
+
                 if (connectData?.instance?.state === 'open') {
-                    return NextResponse.json({ status: 'connected', message: "Instância já conectada!" });
+                    return NextResponse.json({ status: 'connected', message: "Conectou durante o processo!" });
                 }
 
                 qrCode = connectData.base64 || connectData.qrcode?.base64 || connectData.qrcode;
                 pairingCode = connectData.code || connectData.pairingCode;
                 
-                if (qrCode) break;
+                if (qrCode) break; 
             }
         } catch (e) {
             console.error(`>>> [CONNECT FAIL]`, e);
@@ -81,7 +104,7 @@ export async function POST(req: NextRequest) {
         });
     }
 
-    return NextResponse.json({ error: "O servidor está inicializando. Aguarde 10 segundos e clique novamente." }, { status: 504 });
+    return NextResponse.json({ error: "Tempo esgotado. Por favor, clique novamente para reiniciar o processo." }, { status: 504 });
 
   } catch (error: any) {
     console.error("Erro Geral:", error);
