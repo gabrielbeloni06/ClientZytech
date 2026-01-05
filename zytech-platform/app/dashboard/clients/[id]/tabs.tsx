@@ -245,7 +245,49 @@ export const ChatTab = ({ client }: any) => {
   )
 }
 
-export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb, isSyncingSchedule, handleSaveBotConfig, isSavingBot, isEditing, setIsEditing, editForm, setEditForm, handleUpdateClient, botCapabilities, filteredTemplates }: any) => (
+export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb, isSyncingSchedule, handleSaveBotConfig, isSavingBot, isEditing, setIsEditing, editForm, setEditForm, handleUpdateClient, botCapabilities, filteredTemplates }: any) => {
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<string>('idle'); 
+  const [loadingQr, setLoadingQr] = useState(false);
+
+  const handleGenerateQr = async () => {
+      if (!botConfig.phoneId) {
+          alert("Defina um Nome da Instância primeiro (ex: imobiliaria_01) e salve.");
+          return;
+      }
+      
+      setLoadingQr(true);
+      setQrCode(null);
+      setConnectionStatus('loading');
+
+      try {
+          const response = await fetch('/api/bot/connect', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ instanceName: botConfig.phoneId })
+          });
+          
+          const data = await response.json();
+
+          if (data.error) {
+              alert("Erro: " + data.error);
+              setConnectionStatus('idle');
+          } else if (data.status === 'connected') {
+              setConnectionStatus('connected');
+              alert("Esta instância já está conectada ao WhatsApp!");
+          } else if (data.qrcode) {
+              setQrCode(data.qrcode);
+              setConnectionStatus('qrcode');
+          }
+      } catch (err) {
+          alert("Erro de conexão com o servidor. Verifique se a VPS está ligada.");
+          setConnectionStatus('idle');
+      } finally {
+          setLoadingQr(false);
+      }
+  };
+
+  return (
   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
           <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
@@ -263,23 +305,39 @@ export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb,
                           <div className="space-y-1"><label className="text-[10px] font-bold text-yellow-500 uppercase flex items-center gap-1"><Sparkles size={10}/> Prompt Mestre (Admin)</label><textarea className="w-full bg-[#050505] border border-yellow-500/20 rounded-lg p-3 text-gray-300 text-sm focus:border-yellow-500/50 font-mono" rows={3} value={botConfig.aiPersona} onChange={e => setBotConfig({...botConfig, aiPersona: e.target.value})} /></div>
                           <div className="space-y-1"><div className="flex justify-between"><label className="text-[10px] font-bold text-blue-400 uppercase">Contexto: Horários</label><button onClick={syncScheduleFromDb} disabled={isSyncingSchedule} className="text-[10px] text-gray-500 hover:text-white flex items-center gap-1">{isSyncingSchedule ? <RefreshCcw size={10} className="animate-spin"/> : 'Sincronizar'}</button></div><input type="text" className="w-full bg-[#050505] border border-blue-500/20 rounded-lg p-2.5 text-gray-300 text-sm focus:border-blue-500/50" value={botConfig.openingHours} onChange={e => setBotConfig({...botConfig, openingHours: e.target.value})} /></div>
                           
-                          <div className="pt-4 border-t border-white/5 space-y-4">
+                          <div className="pt-4 border-t border-white/5 space-y-4 bg-white/[0.02] p-4 rounded-xl border border-white/5">
                               <div className="space-y-1">
                                   <label className="text-[10px] font-bold text-green-500 uppercase flex items-center gap-1"><Smartphone size={12}/> Nome da Instância (ID)</label>
                                   <input placeholder="Ex: imobiliaria_clientzy_01" className="w-full bg-[#050505] border border-white/10 rounded-lg p-2 text-xs font-mono text-gray-400 focus:border-green-500 outline-none" value={botConfig.phoneId} onChange={e => setBotConfig({...botConfig, phoneId: e.target.value})} />
-                                  <p className="text-[9px] text-gray-500">Defina um ID único para criar a conexão no servidor.</p>
+                                  <p className="text-[9px] text-gray-500">Este ID cria a conexão na VPS.</p>
                               </div>
                               
-                              <div className="pt-2">
-                                  <button 
-                                    type="button"
-                                    onClick={() => alert(`Em breve: Redirecionando para leitura do QR Code da instância: ${botConfig.phoneId || '...'}`)} 
-                                    className="w-full bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 hover:text-white py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-[0_0_15px_rgba(34,197,94,0.1)] hover:shadow-[0_0_20px_rgba(34,197,94,0.2)]"
-                                  >
-                                      <QrCode size={16}/> Ler QR Code (Conectar WhatsApp)
-                                  </button>
+                              <div className="pt-2 flex flex-col items-center">
+                                  {connectionStatus === 'connected' ? (
+                                      <div className="w-full p-4 bg-green-500/20 border border-green-500/30 rounded-xl text-center text-green-400 font-bold text-sm flex items-center justify-center gap-2">
+                                          <CheckCircle size={18}/> WhatsApp Conectado e Operante!
+                                      </div>
+                                  ) : qrCode ? (
+                                      <div className="text-center space-y-3 animate-in zoom-in duration-300">
+                                          <p className="text-xs text-white font-bold">Escaneie com o WhatsApp:</p>
+                                          <div className="bg-white p-2 rounded-lg inline-block">
+                                              <img src={qrCode} alt="QR Code WhatsApp" className="w-48 h-48 object-contain" />
+                                          </div>
+                                          <p className="text-[10px] text-gray-500">O código expira em 40s.</p>
+                                      </div>
+                                  ) : (
+                                      <button 
+                                        type="button"
+                                        onClick={handleGenerateQr}
+                                        disabled={loadingQr || !botConfig.phoneId}
+                                        className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-green-900/20 disabled:opacity-50"
+                                      >
+                                          {loadingQr ? <Loader2 size={16} className="animate-spin"/> : <QrCode size={16}/>}
+                                          {loadingQr ? 'Conectando ao Servidor...' : 'Gerar QR Code de Conexão'}
+                                      </button>
+                                  )}
                               </div>
-
+                              
                               <div className="hidden">
                                   <input type="password" value={botConfig.accessToken} onChange={e => setBotConfig({...botConfig, accessToken: e.target.value})} />
                               </div>
@@ -287,15 +345,12 @@ export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb,
                       </>
                   ) : <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-sm text-green-400 flex items-center gap-2"><CheckCircle size={16}/> Configuração gerenciada pela Zytech.</div>}
                   
-                  <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Saudação Inicial</label><textarea className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-sm text-gray-300 focus:border-white/30" rows={2} value={botConfig.greeting} onChange={e => setBotConfig({...botConfig, greeting: e.target.value})} /></div>
-                  <div className="space-y-1"><label className="text-[10px] font-bold text-cyan-500 uppercase flex items-center gap-1"><HelpCircle size={10}/> Perguntas Frequentes (FAQ)</label><textarea className="w-full bg-[#050505] border border-cyan-500/20 rounded-lg p-3 text-gray-300 text-sm focus:border-cyan-500/50 font-mono" rows={3} placeholder="Ex: Aceitamos fiador? Sim." value={botConfig.aiFaq} onChange={e => setBotConfig({...botConfig, aiFaq: e.target.value})} /></div>
-                  {(botCapabilities.customizable || role === 'super_admin') && (
-                      <div className="pt-2 border-t border-[#333]"><label className="text-xs font-bold text-purple-400 uppercase mb-1 flex items-center gap-2"><Brain size={12}/> Personalidade (Cliente)</label><textarea className="w-full bg-[#0a0a0a] border border-purple-500/30 rounded p-2 text-white text-sm focus:border-purple-500" rows={2} value={botConfig.personality} onChange={e => setBotConfig({...botConfig, personality: e.target.value})} /></div>
-                  )}
+                  <div className="space-y-1 mt-4"><label className="text-[10px] font-bold text-cyan-500 uppercase flex items-center gap-1"><HelpCircle size={10}/> Perguntas Frequentes (FAQ)</label><textarea className="w-full bg-[#050505] border border-cyan-500/20 rounded-lg p-3 text-gray-300 text-sm focus:border-cyan-500/50 font-mono" rows={3} placeholder="Ex: Aceitamos fiador? Sim." value={botConfig.aiFaq} onChange={e => setBotConfig({...botConfig, aiFaq: e.target.value})} /></div>
                   <button onClick={handleSaveBotConfig} disabled={isSavingBot} className="w-full bg-white/5 hover:bg-white/10 text-white border border-white/10 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all">{isSavingBot ? 'Salvando...' : <><Save size={16}/> Salvar Configuração</>}</button>
               </div>
           </div>
       </div>
+      
       <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl h-fit">
           <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
               <div><h3 className="font-bold text-lg flex items-center gap-2 text-white"><Briefcase size={20} className="text-blue-500"/> Contrato</h3><p className="text-xs text-gray-500 mt-1">Detalhes de faturamento e plano.</p></div>
@@ -315,7 +370,8 @@ export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb,
           </form>
       </div>
   </div>
-)
+  )
+}
 
 export const NotificationsTab = ({ notifications, markAsRead, loadingNotifications, fetchNotifications }: any) => (
   <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4">
