@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-// HARDCODED PARA ELIMINAR ERRO DE ENV
 const BASE_URL = "http://46.224.182.243:8080"; 
 const EVO_KEY = "clientzy_master_key_2025";
 
@@ -11,30 +10,18 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export async function POST(req: NextRequest) {
   try {
     const { instanceName } = await req.json();
-    
-    // Gera um nome limpo e um ID único para o log
-    const cleanName = instanceName?.trim() || "sem_nome";
-    const reqId = Date.now().toString().slice(-4);
+    const cleanName = instanceName?.trim();
+    const reqId = Date.now().toString().slice(-4); // ID curto para log
 
-    console.log(`[${reqId}] >>> INICIANDO DEBUG PARA: ${cleanName}`);
+    console.log(`[${reqId}] >>> PROCESSO INICIADO: ${cleanName}`);
 
-    // Headers sem cache
-    const headers = { 
-        "Content-Type": "application/json", 
-        "apikey": EVO_KEY 
-    };
-    
-    // URL com timestamp para evitar cache do Next.js
-    const timeParam = `?t=${Date.now()}`;
+    const headers = { "Content-Type": "application/json", "apikey": EVO_KEY };
 
-    // 1. CRIAÇÃO ---------------------------------------------------
+    // 1. TENTA CRIAR
     try {
-        console.log(`[${reqId}] >>> TENTANDO CRIAR (POST /instance/create)`);
-        
-        const createRes = await fetch(`${BASE_URL}/instance/create${timeParam}`, {
+        const createRes = await fetch(`${BASE_URL}/instance/create`, {
             method: "POST",
             headers,
-            cache: 'no-store',
             body: JSON.stringify({
                 instanceName: cleanName,
                 token: crypto.randomUUID(),
@@ -44,74 +31,67 @@ export async function POST(req: NextRequest) {
             })
         });
 
-        const createText = await createRes.text();
-        console.log(`[${reqId}] >>> RESPOSTA CREATE (${createRes.status}): ${createText.substring(0, 200)}...`);
-        
-        // Se criou (201) ou já existe (403), seguimos.
         if (createRes.ok) {
-            console.log(`[${reqId}] >>> SUCESSO. Aguardando 5s para o Chrome subir...`);
-            await delay(5000);
-        } else if (createRes.status === 403) {
-            console.log(`[${reqId}] >>> JÁ EXISTE. Buscando QR Code direto...`);
+            console.log(`[${reqId}] >>> CRIADO COM SUCESSO (201). Aguardando 5s...`);
+            await delay(5000); // Espera o Chrome subir
         } else {
-             // Se deu outro erro (ex: 500, 400), paramos.
-             return NextResponse.json({ error: `Erro VPS: ${createText}` }, { status: 500 });
+            console.log(`[${reqId}] >>> Status Criação: ${createRes.status} (Provavelmente já existe)`);
         }
-
-    } catch (e: any) {
-        console.error(`[${reqId}] >>> ERRO FATAL NO FETCH CREATE:`, e.message);
-        return NextResponse.json({ error: "Falha de conexão Vercel -> VPS" }, { status: 500 });
+    } catch (e) {
+        console.error(`[${reqId}] >>> ERRO CRIAÇÃO:`, e);
     }
 
-    // 2. BUSCA DO QR CODE (Loop de Debug) -------------------------
-    for (let i = 0; i < 5; i++) {
+    // 2. BUSCA QR CODE COM TIMEOUT (Para não travar o log)
+    for (let i = 0; i < 3; i++) {
         try {
-            console.log(`[${reqId}] >>> BUSCA QR TENTATIVA ${i+1}/5`);
-            
-            // Fetch do connect
-            const connectRes = await fetch(`${BASE_URL}/instance/connect/${cleanName}${timeParam}`, {
-                headers,
-                cache: 'no-store'
-            });
+            console.log(`[${reqId}] >>> Buscando QR (${i+1}/3)...`);
 
-            if (!connectRes.ok) {
-                console.log(`[${reqId}] >>> ERRO HTTP CONNECT: ${connectRes.status}`);
-            } else {
+            // AbortController: Se a VPS não responder em 8s, cancelamos
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+            const connectRes = await fetch(`${BASE_URL}/instance/connect/${cleanName}`, {
+                headers,
+                cache: 'no-store',
+                signal: controller.signal // <--- Isso impede o travamento eterno
+            });
+            
+            clearTimeout(timeoutId); // Limpa o timer se respondeu rápido
+
+            if (connectRes.ok) {
                 const data = await connectRes.json();
                 
-                // VAMOS LOGAR O JSON INTEIRO PARA VER ONDE ESTÁ O QR CODE
-                // Limitamos a 200 chars para não estourar o log se vier base64 gigante
-                const jsonString = JSON.stringify(data);
-                console.log(`[${reqId}] >>> JSON RECEBIDO: ${jsonString.substring(0, 300)}...`);
+                // Loga um pedacinho da resposta pra confirmar que chegou
+                console.log(`[${reqId}] >>> RESPOSTA VPS: Status=${data?.instance?.state}, Count=${data?.count}`);
 
-                // Checagens
                 if (data?.instance?.state === 'open') {
-                     return NextResponse.json({ status: "connected", message: "Conectado!" });
+                    return NextResponse.json({ status: "connected", message: "Conectado!" });
                 }
 
-                // Tenta achar o QR Code em todos os lugares possíveis
                 const qr = data?.base64 || data?.qrcode?.base64 || data?.qrcode;
-
-                if (qr && typeof qr === 'string' && qr.length > 50) {
-                    console.log(`[${reqId}] >>> QR CODE ENCONTRADO! ENVIANDO...`);
+                if (qr && qr.length > 50) {
+                    console.log(`[${reqId}] >>> QR CODE ENCONTRADO!`);
                     return NextResponse.json({ status: "qrcode", qrcode: qr });
                 }
+            } else {
+                console.log(`[${reqId}] >>> ERRO HTTP: ${connectRes.status}`);
             }
 
-        } catch (e) {
-            console.log(`[${reqId}] >>> ERRO NO LOOP:`, e);
+        } catch (e: any) {
+            if (e.name === 'AbortError') {
+                console.log(`[${reqId}] >>> TIMEOUT: A VPS demorou mais de 8s para responder.`);
+            } else {
+                console.log(`[${reqId}] >>> ERRO FETCH:`, e.message);
+            }
         }
         await delay(2000);
     }
 
-    console.log(`[${reqId}] >>> TIMEOUT. NENHUM QR CODE ENCONTRADO APÓS 5 TENTATIVAS.`);
-    return NextResponse.json({ 
-        status: "loading", 
-        message: "Aguardando VPS gerar imagem..." 
-    });
+    console.log(`[${reqId}] >>> FIM. Retornando Loading.`);
+    return NextResponse.json({ status: "loading", message: "VPS processando..." });
 
   } catch (err: any) {
-    console.error(">>> [FATAL]", err);
+    console.error(">>> FATAL:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
