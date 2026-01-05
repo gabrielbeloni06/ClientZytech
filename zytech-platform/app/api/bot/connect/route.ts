@@ -11,27 +11,7 @@ export async function POST(req: NextRequest) {
 
     if (!instanceName) return NextResponse.json({ error: "Nome da instância obrigatório" }, { status: 400 });
 
-    const statusUrl = `${EVO_URL}/instance/connectionState/${instanceName}`;
-    const statusRes = await fetch(statusUrl, {
-        method: 'GET',
-        headers: { 'apikey': EVO_KEY! }
-    });
-
-    if (statusRes.ok) {
-        const statusData = await statusRes.json();
-        const state = statusData?.instance?.state;
-
-        if (state === 'open') {
-            return NextResponse.json({ status: 'connected', message: "Instância já conectada e pronta!" });
-        }
-
-        console.log(`>>> [AUTO-CORREÇÃO] Limpando instância antiga '${instanceName}' (Estado: ${state})...`);
-        await fetch(`${EVO_URL}/instance/delete/${instanceName}`, {
-            method: 'DELETE',
-            headers: { 'apikey': EVO_KEY! }
-        });
-        await delay(3000); 
-    }
+    console.log(`>>> [CONEXÃO] Iniciando para: ${instanceName}`);
 
     const createUrl = `${EVO_URL}/instance/create`;
     const createPayload = {
@@ -41,29 +21,31 @@ export async function POST(req: NextRequest) {
       integration: "WHATSAPP-BAILEYS"
     };
 
-    console.log(`>>> [CREATE] Criando instância nova: ${instanceName}`);
-    
-    const createRes = await fetch(createUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': EVO_KEY! },
-        body: JSON.stringify(createPayload)
-    });
-
-    if (!createRes.ok) {
-        const errText = await createRes.text();
-        if (!errText.includes("already") && !errText.includes("exists")) {
-             return NextResponse.json({ error: `Erro ao criar: ${errText}` }, { status: 500 });
+    try {
+        const createRes = await fetch(createUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': EVO_KEY! },
+            body: JSON.stringify(createPayload)
+        });
+        
+        if (!createRes.ok) {
+            const err = await createRes.text();
+            console.log(`>>> [CREATE INFO] Status: ${createRes.status} (Provavelmente já existe)`);
+        } else {
+            console.log(`>>> [CREATE SUCCESS] Instância criada.`);
         }
+    } catch (e) {
+        console.error(">>> [CREATE ERROR]", e);
     }
 
     let qrCode = null;
     let pairingCode = null;
     let attempts = 0;
-    const maxAttempts = 20;
+    const maxAttempts = 15; 
 
     while (attempts < maxAttempts && !qrCode) {
         attempts++;
-        console.log(`>>> [CONNECT] Tentativa ${attempts}/${maxAttempts} de buscar QR Code...`);
+        console.log(`>>> [CONNECT] Tentativa ${attempts}/${maxAttempts}...`);
         
         try {
             const connectUrl = `${EVO_URL}/instance/connect/${instanceName}`;
@@ -74,20 +56,21 @@ export async function POST(req: NextRequest) {
 
             if (connectRes.ok) {
                 const connectData = await connectRes.json();
+                
+                if (connectData?.instance?.state === 'open') {
+                    return NextResponse.json({ status: 'connected', message: "Instância já conectada!" });
+                }
 
                 qrCode = connectData.base64 || connectData.qrcode?.base64 || connectData.qrcode;
                 pairingCode = connectData.code || connectData.pairingCode;
                 
-                if (qrCode) break; 
-            } else {
-                const errTxt = await connectRes.text();
-                console.log(`>>> [CONNECT FAIL] ${connectRes.status}: ${errTxt}`);
+                if (qrCode) break;
             }
         } catch (e) {
-            console.error(`>>> [CONNECT ERROR] Falha na tentativa ${attempts}:`, e);
+            console.error(`>>> [CONNECT FAIL]`, e);
         }
 
-        if (!qrCode) await delay(2000);
+        await delay(2000);
     }
 
     if (qrCode) {
@@ -98,10 +81,10 @@ export async function POST(req: NextRequest) {
         });
     }
 
-    return NextResponse.json({ error: "A API demorou demais para iniciar o QR Code (Timeout de 40s). Verifique os logs da VPS." }, { status: 504 });
+    return NextResponse.json({ error: "O servidor está inicializando. Aguarde 10 segundos e clique novamente." }, { status: 504 });
 
   } catch (error: any) {
-    console.error("Erro Geral Route:", error);
+    console.error("Erro Geral:", error);
     return NextResponse.json({ error: `Erro Interno: ${error.message}` }, { status: 500 });
   }
 }
