@@ -8,65 +8,99 @@ const EVO_KEY = "clientzy_master_key_2025";
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 export async function POST(req: NextRequest) {
-  const { instanceName } = await req.json();
-  const name = instanceName || "teste_qr";
+  try {
+    const { instanceName } = await req.json();
 
-  const headers = {
-    "Content-Type": "application/json",
-    "apikey": EVO_KEY
-  };
+    if (!instanceName || !instanceName.trim()) {
+      return NextResponse.json(
+        { status: "error", message: "Instance inválida" },
+        { status: 400 }
+      );
+    }
 
-  // 1️⃣ Criar instância
-  await fetch(`${BASE_URL}/instance/create`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      instanceName: name,
-      token: crypto.randomUUID(),
-      qrcode: true,
-      integration: "WHATSAPP-BAILEYS"
-    })
-  }).catch(() => {});
+    const name = instanceName.trim();
 
-  // 2️⃣ Disparar connect (1x)
-  await fetch(`${BASE_URL}/instance/connect/${name}`, {
-    headers
-  }).catch(() => {});
+    const headers = {
+      "Content-Type": "application/json",
+      "apikey": EVO_KEY
+    };
 
-  // 3️⃣ Polling do QR (até 60s)
-  for (let i = 0; i < 20; i++) {
-    const res = await fetch(
+    /* =========================
+       1️⃣ CRIAR INSTÂNCIA
+    ========================== */
+    await fetch(`${BASE_URL}/instance/create`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        instanceName: name,
+        token: crypto.randomUUID(),
+        qrcode: true,
+        integration: "WHATSAPP-BAILEYS"
+      })
+    }).catch(() => {});
+
+    /* =========================
+       2️⃣ DISPARAR CONNECT (1x)
+    ========================== */
+    await fetch(`${BASE_URL}/instance/connect/${name}`, {
+      headers
+    }).catch(() => {});
+
+    /* =========================
+       3️⃣ BUSCAR ESTADO / QR
+       (1 tentativa por request)
+    ========================== */
+    const stateRes = await fetch(
       `${BASE_URL}/instance/connectionState/${name}`,
       { headers, cache: "no-store" }
     );
 
-    if (res.ok) {
-      const data = await res.json();
-
-      // Já conectado
-      if (data?.instance?.state === "open") {
-        return NextResponse.json({ status: "connected" });
-      }
-
-      // QR Code
-      const qr =
-        data?.qrcode?.base64 ||
-        data?.qr ||
-        data?.base64;
-
-      if (qr && qr.length > 50) {
-        return NextResponse.json({
-          status: "qrcode",
-          qrcode: qr
-        });
-      }
+    if (!stateRes.ok) {
+      return NextResponse.json({
+        status: "loading",
+        message: "Aguardando servidor..."
+      });
     }
 
-    await delay(3000);
-  }
+    const data = await stateRes.json();
 
-  return NextResponse.json({
-    status: "loading",
-    message: "QR ainda não disponível"
-  });
+    /* =========================
+       4️⃣ JÁ CONECTADO
+    ========================== */
+    if (data?.instance?.state === "open") {
+      return NextResponse.json({
+        status: "connected"
+      });
+    }
+
+    /* =========================
+       5️⃣ QR CODE DISPONÍVEL
+    ========================== */
+    const qr =
+      data?.qrcode?.base64 ||
+      data?.qr ||
+      data?.base64;
+
+    if (qr && typeof qr === "string" && qr.length > 50) {
+      return NextResponse.json({
+        status: "qrcode",
+        qrcode: qr
+      });
+    }
+
+    /* =========================
+       6️⃣ AINDA INICIALIZANDO
+    ========================== */
+    return NextResponse.json({
+      status: "loading",
+      message: "Inicializando WhatsApp..."
+    });
+
+  } catch (err: any) {
+    console.error("BOT CONNECT ERROR:", err);
+    return NextResponse.json(
+      { status: "error", message: err.message || "Erro interno" },
+      { status: 500 }
+    );
+  }
 }
