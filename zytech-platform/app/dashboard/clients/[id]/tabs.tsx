@@ -6,7 +6,7 @@ import {
   Home, Scissors, Package, Plus, MapPin, Clock, CheckCircle, XCircle, Truck, 
   ChefHat, Phone, Calendar, ExternalLink, MessageCircle, Filter, User, Link as LinkIcon,
   ShoppingCart, List, X, Settings, Brain, Trash2, ArrowRight, HelpCircle, Bell, UserPlus,
-  MessageSquare, Search, Send, Loader2
+  MessageSquare, Search, Send, Loader2, QrCode, Smartphone
 } from 'lucide-react'
 
 export const NeonLineChart = ({ currentData, prevTotal }: { currentData: number[], prevTotal: number }) => {
@@ -262,15 +262,37 @@ export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb,
                           </div>
                           <div className="space-y-1"><label className="text-[10px] font-bold text-yellow-500 uppercase flex items-center gap-1"><Sparkles size={10}/> Prompt Mestre (Admin)</label><textarea className="w-full bg-[#050505] border border-yellow-500/20 rounded-lg p-3 text-gray-300 text-sm focus:border-yellow-500/50 font-mono" rows={3} value={botConfig.aiPersona} onChange={e => setBotConfig({...botConfig, aiPersona: e.target.value})} /></div>
                           <div className="space-y-1"><div className="flex justify-between"><label className="text-[10px] font-bold text-blue-400 uppercase">Contexto: Horários</label><button onClick={syncScheduleFromDb} disabled={isSyncingSchedule} className="text-[10px] text-gray-500 hover:text-white flex items-center gap-1">{isSyncingSchedule ? <RefreshCcw size={10} className="animate-spin"/> : 'Sincronizar'}</button></div><input type="text" className="w-full bg-[#050505] border border-blue-500/20 rounded-lg p-2.5 text-gray-300 text-sm focus:border-blue-500/50" value={botConfig.openingHours} onChange={e => setBotConfig({...botConfig, openingHours: e.target.value})} /></div>
-                          <div className="pt-4 border-t border-white/5 grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Phone ID</label><input className="w-full bg-[#050505] border border-white/10 rounded-lg p-2 text-xs font-mono text-gray-400" value={botConfig.phoneId} onChange={e => setBotConfig({...botConfig, phoneId: e.target.value})} /></div><div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Token</label><input type="password" className="w-full bg-[#050505] border border-white/10 rounded-lg p-2 text-xs font-mono text-gray-400" value={botConfig.accessToken} onChange={e => setBotConfig({...botConfig, accessToken: e.target.value})} /></div></div>
+                          
+                          <div className="pt-4 border-t border-white/5 space-y-4">
+                              <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-green-500 uppercase flex items-center gap-1"><Smartphone size={12}/> Nome da Instância (ID)</label>
+                                  <input placeholder="Ex: imobiliaria_clientzy_01" className="w-full bg-[#050505] border border-white/10 rounded-lg p-2 text-xs font-mono text-gray-400 focus:border-green-500 outline-none" value={botConfig.phoneId} onChange={e => setBotConfig({...botConfig, phoneId: e.target.value})} />
+                                  <p className="text-[9px] text-gray-500">Defina um ID único para criar a conexão no servidor.</p>
+                              </div>
+                              
+                              <div className="pt-2">
+                                  <button 
+                                    type="button"
+                                    onClick={() => alert(`Em breve: Redirecionando para leitura do QR Code da instância: ${botConfig.phoneId || '...'}`)} 
+                                    className="w-full bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 hover:text-white py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-[0_0_15px_rgba(34,197,94,0.1)] hover:shadow-[0_0_20px_rgba(34,197,94,0.2)]"
+                                  >
+                                      <QrCode size={16}/> Ler QR Code (Conectar WhatsApp)
+                                  </button>
+                              </div>
+
+                              <div className="hidden">
+                                  <input type="password" value={botConfig.accessToken} onChange={e => setBotConfig({...botConfig, accessToken: e.target.value})} />
+                              </div>
+                          </div>
                       </>
                   ) : <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-sm text-green-400 flex items-center gap-2"><CheckCircle size={16}/> Configuração gerenciada pela Zytech.</div>}
+                  
                   <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Saudação Inicial</label><textarea className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-sm text-gray-300 focus:border-white/30" rows={2} value={botConfig.greeting} onChange={e => setBotConfig({...botConfig, greeting: e.target.value})} /></div>
                   <div className="space-y-1"><label className="text-[10px] font-bold text-cyan-500 uppercase flex items-center gap-1"><HelpCircle size={10}/> Perguntas Frequentes (FAQ)</label><textarea className="w-full bg-[#050505] border border-cyan-500/20 rounded-lg p-3 text-gray-300 text-sm focus:border-cyan-500/50 font-mono" rows={3} placeholder="Ex: Aceitamos fiador? Sim." value={botConfig.aiFaq} onChange={e => setBotConfig({...botConfig, aiFaq: e.target.value})} /></div>
                   {(botCapabilities.customizable || role === 'super_admin') && (
                       <div className="pt-2 border-t border-[#333]"><label className="text-xs font-bold text-purple-400 uppercase mb-1 flex items-center gap-2"><Brain size={12}/> Personalidade (Cliente)</label><textarea className="w-full bg-[#0a0a0a] border border-purple-500/30 rounded p-2 text-white text-sm focus:border-purple-500" rows={2} value={botConfig.personality} onChange={e => setBotConfig({...botConfig, personality: e.target.value})} /></div>
                   )}
-                  <button onClick={handleSaveBotConfig} disabled={isSavingBot} className="w-full bg-white/5 hover:bg-white/10 text-white border border-white/10 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all">{isSavingBot ? 'Salvando...' : <><Save size={16}/> Atualizar Inteligência</>}</button>
+                  <button onClick={handleSaveBotConfig} disabled={isSavingBot} className="w-full bg-white/5 hover:bg-white/10 text-white border border-white/10 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all">{isSavingBot ? 'Salvando...' : <><Save size={16}/> Salvar Configuração</>}</button>
               </div>
           </div>
       </div>

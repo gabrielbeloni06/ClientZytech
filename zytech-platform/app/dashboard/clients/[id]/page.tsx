@@ -324,7 +324,7 @@ export default function ClientDetailsPage() {
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
             {[
                 { id: 'overview', label: 'Visão Geral', icon: LayoutDashboard },
-                { id: 'chat', label: 'Bate-papo', icon: MessageSquare }, // ABA NOVA
+                { id: 'chat', label: 'Bate-papo', icon: MessageSquare },
                 { id: 'contract', label: 'Configurações', icon: Settings },
                 showNotifications && { id: 'notifications', label: 'Alertas', icon: Bell }, 
                 { id: 'bot_catalog', label: isRealEstate ? 'Imóveis' : 'Catálogo Bot', icon: isRealEstate ? Home : Package },

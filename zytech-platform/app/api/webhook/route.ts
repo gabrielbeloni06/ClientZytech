@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-
 import { botRealEstateControl, BotContext } from "@/lib/bots/templates/core/real_estate";
-
-import { sendWhatsAppMessage, getMediaUrl, downloadMedia } from "@/lib/whatsapp";
+import { sendWhatsAppMessage } from "@/lib/whatsapp";
 import { transcribeAudio } from "@/lib/groq-audio";
 
 const supabase = createClient(
@@ -12,63 +10,48 @@ const supabase = createClient(
 );
 
 export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
-  const mode = url.searchParams.get("hub.mode");
-  const token = url.searchParams.get("hub.verify_token");
-  const challenge = url.searchParams.get("hub.challenge");
-  const verifyToken = process.env.ZYTECH_VERIFY_TOKEN || "clientzy_token_seguro";
-
-  if (mode === "subscribe" && token === verifyToken) {
-    return new NextResponse(challenge, { status: 200 });
-  }
-  return new NextResponse("Forbidden", { status: 403 });
+  return new NextResponse("Evolution Webhook Online 🚀", { status: 200 });
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-
-    if (body.entry?.[0]?.changes?.[0]?.value?.statuses) return new NextResponse("OK", { status: 200 });
-
-    const entry = body.entry?.[0];
-    const value = entry?.changes?.[0]?.value;
-    const message = value?.messages?.[0];
-
-    if (!message) return new NextResponse("OK", { status: 200 });
-
-    const businessPhoneId = value.metadata?.phone_number_id;
-
-    const { data: org, error } = await supabase
-      .from("organizations")
-      .select("id, bot_status, whatsapp_access_token, business_type, name")
-      .eq("whatsapp_phone_id", businessPhoneId) 
-      .single();
-
-    if (error || !org) {
-        console.warn(`[Webhook] Ignorado: Empresa não encontrada para ID ${businessPhoneId}`);
+    if (body.event !== 'messages.upsert') {
         return new NextResponse("OK", { status: 200 });
     }
 
-    if (!org.bot_status || !org.whatsapp_access_token) return new NextResponse("OK", { status: 200 });
+    const msgData = body.data;
+    const instanceName = body.instance; 
+    
+    if (msgData.key.fromMe) return new NextResponse("OK", { status: 200 });
 
-    const customerPhone = message.from;
-    const customerName = value.contacts?.[0]?.profile?.name || "Cliente";
+    if (msgData.key.remoteJid.includes('@g.us')) return new NextResponse("OK", { status: 200 });
+
+    console.log(`>>> [EVO] Nova msg em: ${instanceName} | De: ${msgData.pushName}`);
+
+    const { data: org, error } = await supabase
+      .from("organizations")
+      .select("id, bot_status, business_type, name, ai_faq, whatsapp_access_token")
+      .eq("whatsapp_phone_id", instanceName) 
+      .single();
+
+    if (!org || !org.bot_status) {
+        console.log(`>>> [EVO] Ignorado: Instância '${instanceName}' não encontrada ou bot desligado.`);
+        return new NextResponse("OK", { status: 200 });
+    }
+
+    const customerPhone = msgData.key.remoteJid.replace('@s.whatsapp.net', '');
+    const customerName = msgData.pushName || "Cliente";
     let userText = "";
 
-    if (message.type === "text") {
-      userText = message.text.body;
-    } else if (message.type === "audio") {
-      try {
-        const mediaId = message.audio.id;
-        const mediaUrl = await getMediaUrl(mediaId, org.whatsapp_access_token);
-        if (mediaUrl) {
-            const audioBuffer = await downloadMedia(mediaUrl, org.whatsapp_access_token);
-            if (audioBuffer) {
-               const buffer = Buffer.from(audioBuffer);
-               userText = await transcribeAudio(buffer) || "";
-            }
-        }
-      } catch (e) { console.error("Erro áudio:", e); }
+    const messageType = msgData.messageType;
+
+    if (messageType === 'conversation') {
+        userText = msgData.message.conversation;
+    } else if (messageType === 'extendedTextMessage') {
+        userText = msgData.message.extendedTextMessage.text;
+    } else if (messageType === 'audioMessage') {
+        userText = "[Áudio recebido]"; 
     }
 
     if (!userText) return new NextResponse("OK", { status: 200 });
@@ -91,33 +74,34 @@ export async function POST(req: NextRequest) {
     
     const history = historyData ? historyData.reverse() : [];
 
-    const sendMessageWrapper = async (responseText: string) => {
-        if (!responseText) return;
-        
-        await sendWhatsAppMessage(org.whatsapp_access_token, businessPhoneId, customerPhone, responseText);
+    const sendMessageWrapper = async (response: string) => {
+        if (!response) return;
+
+        await sendWhatsAppMessage(
+            '', 
+            instanceName, 
+            customerPhone, 
+            response
+        );
         
         await supabase.from('chat_messages').insert({
             organization_id: org.id,
             phone: customerPhone,
             role: 'assistant',
-            content: responseText
+            content: response
         });
     };
 
     const botContext: BotContext = { 
         orgId: org.id, 
-        history: history, 
+        history, 
         text: userText, 
         customerPhone, 
         customerName 
     };
-
     if (org.business_type === 'real_estate') {
         const result = await botRealEstateControl(botContext, sendMessageWrapper, supabase);
-        
-        if (result?.response) {
-            await sendMessageWrapper(result.response);
-        }
+        if (result?.response) await sendMessageWrapper(result.response);
     } else {
         await sendMessageWrapper("Olá! Sou o assistente virtual da " + org.name);
     }
@@ -125,7 +109,7 @@ export async function POST(req: NextRequest) {
     return new NextResponse("OK", { status: 200 });
 
   } catch (error) {
-    console.error("Erro Crítico Webhook:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    console.error("Erro Crítico Webhook Evolution:", error);
+    return new NextResponse("Internal Error", { status: 500 });
   }
 }

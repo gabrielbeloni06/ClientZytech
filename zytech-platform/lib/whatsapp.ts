@@ -1,29 +1,34 @@
-
-
-const META_VERSION = 'v19.0'; 
+const EVO_API_URL = process.env.EVOLUTION_API_URL;
+const EVO_GLOBAL_KEY = process.env.EVOLUTION_API_KEY; 
 
 export async function sendWhatsAppMessage(
-  accessToken: string,
-  phoneNumberId: string,
+  _unused_token: string, 
+  instanceName: string,  
   to: string,
   text: string
 ) {
-  const url = `https://graph.facebook.com/${META_VERSION}/${phoneNumberId}/messages`;
+  if (!EVO_API_URL || !EVO_GLOBAL_KEY) {
+    console.error(">>> [EVO ERROR] URL ou Key não configuradas no .env");
+    return null;
+  }
+
+  const cleanPhone = to.replace(/\D/g, '');
+  
+  const url = `${EVO_API_URL}/message/sendText/${instanceName}`;
 
   const payload = {
-    messaging_product: "whatsapp", 
-    recipient_type: "individual",
-    to: to,
-    type: "text",
-    text: { preview_url: false, body: text }
+    number: cleanPhone,
+    text: text,
+    delay: 1200, 
+    linkPreview: true
   };
 
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'apikey': EVO_GLOBAL_KEY
       },
       body: JSON.stringify(payload)
     });
@@ -31,7 +36,7 @@ export async function sendWhatsAppMessage(
     const data = await response.json();
 
     if (!response.ok) {
-      console.error(">>> [META ERROR - SEND]", JSON.stringify(data, null, 2));
+      console.error(">>> [EVO ERROR]", JSON.stringify(data, null, 2));
       return null;
     }
 
@@ -42,34 +47,13 @@ export async function sendWhatsAppMessage(
   }
 }
 
-export async function getMediaUrl(mediaId: string, accessToken: string) {
-  const url = `https://graph.facebook.com/${META_VERSION}/${mediaId}`;
-
-  try {
-    const response = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-    
-    const data = await response.json();
-    return data.url || null; 
-  } catch (error) {
-    console.error(">>> [META ERROR - GET MEDIA]", error);
-    return null;
-  }
+/**
+ * Obtém Mídia via Evolution API
+ */
+export async function getMediaUrl(mediaId: string, _token: string) {
+  return null; 
 }
 
-export async function downloadMedia(mediaUrl: string, accessToken: string) {
-  try {
-    const response = await fetch(mediaUrl, {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-
-    if (!response.ok) return null;
-
-    const arrayBuffer = await response.arrayBuffer();
-    return arrayBuffer;
-  } catch (error) {
-    console.error(">>> [DOWNLOAD ERROR]", error);
+export async function downloadMedia(url: string, _token: string) {
     return null;
-  }
 }
