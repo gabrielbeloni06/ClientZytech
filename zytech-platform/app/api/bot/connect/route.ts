@@ -7,29 +7,36 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function POST(req: NextRequest) {
   try {
-    const { instanceName, phoneNumber } = await req.json(); 
+    const { instanceName, phoneNumber } = await req.json();
 
     if (!instanceName) return NextResponse.json({ error: "Nome da instância obrigatório" }, { status: 400 });
 
-    console.log(`>>> [CONEXÃO] Iniciando para: ${instanceName} ${phoneNumber ? '(Modo Pairing Code)' : '(Modo QR)'}`);
+    console.log(`>>> [CONEXÃO] Iniciando: ${instanceName} ${phoneNumber ? `(Pairing: ${phoneNumber})` : '(QR)'}`);
 
     try {
         const statusRes = await fetch(`${EVO_URL}/instance/connectionState/${instanceName}`, {
             method: 'GET',
             headers: { 'apikey': EVO_KEY! }
         });
+        
         if (statusRes.ok) {
             const statusData = await statusRes.json();
-            if (statusData?.instance?.state === 'open') {
+            const state = statusData?.instance?.state;
+            
+            if (state === 'open') {
                  return NextResponse.json({ status: 'connected', message: "Já conectado!" });
             }
+            
+            console.log(`>>> [RESET] Apagando instância antiga (${state})...`);
             await fetch(`${EVO_URL}/instance/delete/${instanceName}`, {
                 method: 'DELETE',
                 headers: { 'apikey': EVO_KEY! }
             });
-            await delay(2000);
+            await delay(3000); 
         }
-    } catch (e) {}
+    } catch (e) {
+        console.log(">>> [INFO] Instância limpa (não existia).");
+    }
 
     const createUrl = `${EVO_URL}/instance/create`;
     const createPayload = {
@@ -41,38 +48,59 @@ export async function POST(req: NextRequest) {
       msgBufferLimit: 50
     };
 
-    await fetch(createUrl, {
+    console.log(`>>> [CREATE] Criando instância...`);
+    const createRes = await fetch(createUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': EVO_KEY! },
         body: JSON.stringify(createPayload)
     });
 
-    const connectUrl = `${EVO_URL}/instance/connect/${instanceName}`;
-    
-    if (phoneNumber) {
-        console.log(`>>> [PAIRING] Solicitando código para ${phoneNumber}...`);
-        
-        await delay(3000); 
+    if (!createRes.ok) {
+        const errTxt = await createRes.text();
+        console.log(`>>> [CREATE INFO] ${errTxt}`);
+    }
 
+    if (phoneNumber) {
+        const cleanPhone = phoneNumber.replace(/\D/g, '');
+        console.log(`>>> [PAIRING] Aguardando motor iniciar para pedir código para: ${cleanPhone}...`);
+        
+        await delay(6000); 
+
+        const connectUrl = `${EVO_URL}/instance/connect/${instanceName}`;
+        
         const pairRes = await fetch(connectUrl, {
             method: 'POST', 
             headers: { 'Content-Type': 'application/json', 'apikey': EVO_KEY! },
-            body: JSON.stringify({ number: phoneNumber })
+            body: JSON.stringify({ number: cleanPhone })
         });
 
-        if (pairRes.ok) {
-            const pairData = await pairRes.json();
-            if (pairData.code || pairData.pairingCode) {
-                return NextResponse.json({ 
-                    status: 'pairing', 
-                    code: pairData.code || pairData.pairingCode 
-                });
-            }
+        if (!pairRes.ok) {
+            const errText = await pairRes.text();
+            console.error(`>>> [PAIRING ERROR] ${pairRes.status}: ${errText}`);
+            return NextResponse.json({ error: `Erro da Evolution: ${errText}` }, { status: 500 });
         }
-        return NextResponse.json({ error: "Falha ao gerar código de pareamento. Tente novamente." }, { status: 500 });
+
+        const pairData = await pairRes.json();
+        const code = pairData.code || pairData.pairingCode;
+
+        if (code) {
+            return NextResponse.json({ status: 'pairing', code: code });
+        }
+        
+        return NextResponse.json({ error: "A API não retornou o código. Tente novamente." }, { status: 500 });
     }
 
-    return NextResponse.json({ error: "Por favor, forneça o número do celular para gerar o código." }, { status: 400 });
+    await delay(2000);
+    const connectUrl = `${EVO_URL}/instance/connect/${instanceName}`;
+    const connectRes = await fetch(connectUrl, { headers: { 'apikey': EVO_KEY! } });
+    const connectData = await connectRes.json();
+    const qrCode = connectData.base64 || connectData.qrcode?.base64 || connectData.qrcode;
+
+    if (qrCode) {
+        return NextResponse.json({ status: 'qrcode', qrcode: qrCode });
+    }
+
+    return NextResponse.json({ error: "Não foi possível gerar QR ou Código." }, { status: 500 });
 
   } catch (error: any) {
     console.error("Erro Geral:", error);
