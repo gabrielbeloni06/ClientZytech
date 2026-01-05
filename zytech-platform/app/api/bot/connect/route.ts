@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Configurações de execução na Vercel (para evitar timeout da plataforma)
 export const runtime = "nodejs";
+export const maxDuration = 120; // Permite rodar por até 2 minutos
 
 const EVO_URL = process.env.EVOLUTION_API_URL!;
-// Remove barra final se houver para evitar erro de URL (ex: http://ip:8080//instance)
+// Remove barra final se houver para evitar erro de URL
 const BASE_URL = EVO_URL?.endsWith('/') ? EVO_URL.slice(0, -1) : EVO_URL;
 const EVO_KEY = process.env.EVOLUTION_API_KEY!;
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Função que fica tentando pegar o QR Code até ele aparecer
-async function forceQR(instanceName: string, timeout = 45000) {
+async function forceQR(instanceName: string, timeout = 120000) { // Aumentado para 120s
   const start = Date.now();
-  console.log(`>>> [LOOP QR] Iniciando busca persistente para: ${instanceName}`);
+  console.log(`>>> [LOOP QR] Iniciando busca persistente para: ${instanceName} (Timeout: ${timeout/1000}s)`);
 
   while (Date.now() - start < timeout) {
     try {
@@ -24,9 +26,9 @@ async function forceQR(instanceName: string, timeout = 45000) {
       if (res.ok) {
         const data = await res.json();
         
-        // Se vier { count: 0 }, é porque o Chrome da VPS ainda está abrindo. Ignora.
+        // Se vier { count: 0 }, é porque o Chrome da VPS ainda está abrindo.
         if (data.count === 0) {
-             // console.log(">>> [WAIT] count:0 (Carregando...)");
+             // Ainda carregando... continua o loop
         } 
         else {
             // Tenta encontrar o QR Code real (base64)
@@ -52,7 +54,7 @@ async function forceQR(instanceName: string, timeout = 45000) {
     await delay(2500);
   }
 
-  throw new Error("Timeout: A VPS não gerou o QR Code a tempo (travou em count:0).");
+  throw new Error("Timeout: A VPS demorou mais de 2 minutos e não gerou o QR Code. Tente reiniciar a VPS se persistir.");
 }
 
 export async function POST(req: NextRequest) {
@@ -95,7 +97,8 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. WAIT INICIAL (Essencial para sair do count:0)
-    await delay(4000);
+    // Aumentamos um pouco o wait inicial para dar chance ao Docker
+    await delay(5000);
 
     // 4. LOOP DE BUSCA (A mágica acontece aqui)
     const qrCode = await forceQR(instanceName);
