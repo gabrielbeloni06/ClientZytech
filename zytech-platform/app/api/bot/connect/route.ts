@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   try {
     const { instanceName } = await req.json();
 
-    if (!instanceName?.trim()) {
+    if (!instanceName || !instanceName.trim()) {
       return NextResponse.json(
         { status: "error", message: "Nome da instância é obrigatório" },
         { status: 400 }
@@ -17,110 +17,86 @@ export async function POST(req: NextRequest) {
     }
 
     const name = instanceName.trim();
+
     const headers = {
       "Content-Type": "application/json",
-      "apikey": EVO_KEY
+      apikey: EVO_KEY
     };
 
-    let resultData: any = null;
-    let action = "";
-
     // ======================================================
-    // TENTATIVA 1: CRIAR A INSTÂNCIA (Assume que não existe)
+    // 1️⃣ TENTA CRIAR A INSTÂNCIA
     // ======================================================
     try {
-      console.log(`[API] Tentando criar instância: ${name}`);
-      
-      const createRes = await fetch(`${BASE_URL}/instance/create`, {
+      await fetch(`${BASE_URL}/instance/create`, {
         method: "POST",
         headers,
         body: JSON.stringify({
           instanceName: name,
-          token: crypto.randomUUID(),
           qrcode: true,
           integration: "WHATSAPP-BAILEYS"
         })
       });
-
-      // Se sucesso (201), pega o JSON e segue
-      if (createRes.ok) {
-        resultData = await createRes.json();
-        action = "created";
-      } else {
-        // Se deu erro, precisamos ver se é porque JÁ EXISTE (403)
-        const errorText = await createRes.text();
-        
-        // Verifica se o erro é o clássico "instance already exists"
-        if (createRes.status === 403 || errorText.includes("already exists")) {
-          console.log(`[API] Instância ${name} já existe. Tentando conectar...`);
-          throw new Error("ALREADY_EXISTS"); // Força pular para o catch
-        } else {
-            // Se for outro erro (ex: 500 do servidor), repassa o erro real
-            throw new Error(`Erro ao criar: ${errorText}`);
-        }
-      }
-
-    } catch (err: any) {
-      // ======================================================
-      // TENTATIVA 2: SE JÁ EXISTE, TENTA CONECTAR (Buscar QR)
-      // ======================================================
-      if (err.message === "ALREADY_EXISTS") {
-        const connectRes = await fetch(`${BASE_URL}/instance/connect/${name}`, {
-          method: "GET",
-          headers
-        });
-
-        if (connectRes.ok) {
-            resultData = await connectRes.json();
-            action = "connected";
-        } else {
-            // Se falhar no connect também, pode ser que a instância esteja travada
-            // Tenta ver o estado pra saber se já não está conectada
-             const stateRes = await fetch(`${BASE_URL}/instance/connectionState/${name}`, { headers });
-             const stateData = await stateRes.json();
-             
-             if (stateData?.instance?.state === 'open') {
-                 return NextResponse.json({ status: "connected" });
-             }
-             
-             throw new Error("Não foi possível conectar na instância existente.");
-        }
-      } else {
-        throw err; // Repassa erros que não sejam "Already Exists"
-      }
+    } catch (_) {
+      // ignora erro — se já existir, seguimos o fluxo
     }
 
     // ======================================================
-    // TRATAR RETORNO DO QR CODE
+    // 2️⃣ VERIFICA ESTADO DA CONEXÃO
     // ======================================================
-    
-    // Se a instância retornou que já está conectada no JSON de criação/conexão
-    if (resultData?.instance?.state === 'open' || resultData?.state === 'open') {
+    const stateRes = await fetch(
+      `${BASE_URL}/instance/connectionState/${name}`,
+      { headers }
+    );
+
+    if (stateRes.ok) {
+      const stateData = await stateRes.json();
+      if (stateData?.instance?.state === "open") {
         return NextResponse.json({ status: "connected" });
+      }
     }
 
-    // Normaliza onde está o Base64 (muda dependendo se veio do Create ou Connect)
-    const qrCodeBase64 = 
-      resultData?.qrcode?.base64 ||  // Padrão Create V2
-      resultData?.base64 ||          // Padrão Connect V2
-      resultData?.qrcode;            // Variações
+    // ======================================================
+    // 3️⃣ BUSCA QR CODE VIA fetchInstances (PONTO CRÍTICO)
+    // ======================================================
+    const listRes = await fetch(`${BASE_URL}/instance/fetchInstances`, {
+      headers
+    });
 
-    if (qrCodeBase64 && typeof qrCodeBase64 === 'string') {
-      console.log(`[API] QR Code obtido via ${action}`);
+    if (!listRes.ok) {
+      throw new Error("Erro ao buscar instâncias");
+    }
+
+    const instances = await listRes.json();
+    const instance = instances.find(
+      (i: any) => i.instanceName === name
+    );
+
+    if (!instance) {
       return NextResponse.json({
-        status: "qrcode",
-        qrcode: qrCodeBase64.replace(/^data:image\/png;base64,/, "")
+        status: "loading",
+        message: "Instância inicializando"
       });
     }
 
-    // Se não tem QR Code, provavelmente está inicializando
+    const qrBase64 =
+      instance?.qrcode?.base64 ||
+      instance?.qrcode ||
+      instance?.qr;
+
+    if (qrBase64) {
+      return NextResponse.json({
+        status: "qrcode",
+        qrcode: qrBase64.replace(/^data:image\/png;base64,/, "")
+      });
+    }
+
     return NextResponse.json({
       status: "loading",
-      message: "Inicializando a instância..."
+      message: "Aguardando QR Code"
     });
 
   } catch (err: any) {
-    console.error("[API ERROR]", err.message);
+    console.error("[EVOLUTION ERROR]", err);
     return NextResponse.json(
       { status: "error", message: err.message },
       { status: 500 }
