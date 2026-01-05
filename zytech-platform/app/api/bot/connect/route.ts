@@ -5,13 +5,11 @@ export const runtime = "nodejs";
 const BASE_URL = "http://46.224.182.243:8080";
 const EVO_KEY = "clientzy_master_key_2025";
 
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-
 export async function POST(req: NextRequest) {
   try {
     const { instanceName } = await req.json();
 
-    if (!instanceName || !instanceName.trim()) {
+    if (!instanceName?.trim()) {
       return NextResponse.json(
         { status: "error", message: "Instance inválida" },
         { status: 400 }
@@ -22,59 +20,78 @@ export async function POST(req: NextRequest) {
 
     const headers = {
       "Content-Type": "application/json",
-      "apikey": EVO_KEY
+      apikey: EVO_KEY
     };
 
     /* =========================
-       1️⃣ CRIAR INSTÂNCIA
+       1️⃣ BUSCAR ESTADO ATUAL
     ========================== */
-    await fetch(`${BASE_URL}/instance/create`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        instanceName: name,
-        token: crypto.randomUUID(),
-        qrcode: true,
-        integration: "WHATSAPP-BAILEYS"
-      })
-    }).catch(() => {});
+    let stateData: any = null;
+
+    try {
+      const stateRes = await fetch(
+        `${BASE_URL}/instance/connectionState/${name}`,
+        { headers, cache: "no-store" }
+      );
+
+      if (stateRes.ok) {
+        stateData = await stateRes.json();
+      }
+    } catch {}
+
+    const state = stateData?.instance?.state;
 
     /* =========================
-       2️⃣ DISPARAR CONNECT (1x)
+       2️⃣ CRIAR INSTÂNCIA (SE NÃO EXISTIR)
     ========================== */
-    await fetch(`${BASE_URL}/instance/connect/${name}`, {
-      headers
-    }).catch(() => {});
+    if (!state) {
+      await fetch(`${BASE_URL}/instance/create`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          instanceName: name,
+          token: crypto.randomUUID(),
+          qrcode: true,
+          integration: "WHATSAPP-BAILEYS"
+        })
+      }).catch(() => {});
+    }
 
     /* =========================
-       3️⃣ BUSCAR ESTADO / QR
-       (1 tentativa por request)
+       3️⃣ DISPARAR CONNECT (SÓ SE PRECISAR)
     ========================== */
-    const stateRes = await fetch(
+    if (!state || state === "disconnected") {
+      await fetch(`${BASE_URL}/instance/connect/${name}`, {
+        headers
+      }).catch(() => {});
+    }
+
+    /* =========================
+       4️⃣ BUSCAR ESTADO FINAL
+    ========================== */
+    const finalRes = await fetch(
       `${BASE_URL}/instance/connectionState/${name}`,
       { headers, cache: "no-store" }
     );
 
-    if (!stateRes.ok) {
+    if (!finalRes.ok) {
       return NextResponse.json({
         status: "loading",
-        message: "Aguardando servidor..."
+        message: "Inicializando WhatsApp..."
       });
     }
 
-    const data = await stateRes.json();
+    const data = await finalRes.json();
 
     /* =========================
-       4️⃣ JÁ CONECTADO
+       5️⃣ CONECTADO
     ========================== */
     if (data?.instance?.state === "open") {
-      return NextResponse.json({
-        status: "connected"
-      });
+      return NextResponse.json({ status: "connected" });
     }
 
     /* =========================
-       5️⃣ QR CODE DISPONÍVEL
+       6️⃣ QR CODE
     ========================== */
     const qr =
       data?.qrcode?.base64 ||
@@ -89,17 +106,17 @@ export async function POST(req: NextRequest) {
     }
 
     /* =========================
-       6️⃣ AINDA INICIALIZANDO
+       7️⃣ AINDA CARREGANDO
     ========================== */
     return NextResponse.json({
       status: "loading",
-      message: "Inicializando WhatsApp..."
+      message: "Gerando QR Code..."
     });
 
   } catch (err: any) {
-    console.error("BOT CONNECT ERROR:", err);
+    console.error("CONNECT ERROR:", err);
     return NextResponse.json(
-      { status: "error", message: err.message || "Erro interno" },
+      { status: "error", message: err.message },
       { status: 500 }
     );
   }
