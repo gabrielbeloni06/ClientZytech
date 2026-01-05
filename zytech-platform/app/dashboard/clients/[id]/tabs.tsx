@@ -6,9 +6,10 @@ import {
   Home, Scissors, Package, Plus, MapPin, Clock, CheckCircle, XCircle, Truck, 
   ChefHat, Phone, Calendar, ExternalLink, MessageCircle, Filter, User, Link as LinkIcon,
   ShoppingCart, List, X, Settings, Brain, Trash2, ArrowRight, HelpCircle, Bell, UserPlus,
-  MessageSquare, Search, Send, Loader2, Smartphone, Hash
+  MessageSquare, Search, Send, Loader2, QrCode, Smartphone
 } from 'lucide-react'
 
+// --- CHART COMPONENT ---
 export const NeonLineChart = ({ currentData, prevTotal }: { currentData: number[], prevTotal: number }) => {
   const height = 60
   const width = 200
@@ -44,6 +45,7 @@ export const NeonLineChart = ({ currentData, prevTotal }: { currentData: number[
   )
 }
 
+// --- OVERVIEW TAB ---
 export const OverviewTab = ({ monthlyStats, loadingStats, notes, setNotes, handleSaveNotes, isSavingNotes, unit = "R$", statLabel = "Performance" }: any) => (
   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="lg:col-span-2 bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl p-6 relative overflow-hidden shadow-2xl">
@@ -86,6 +88,7 @@ export const OverviewTab = ({ monthlyStats, loadingStats, notes, setNotes, handl
   </div>
 )
 
+// --- CHAT TAB ---
 export const ChatTab = ({ client }: any) => {
   const [contacts, setContacts] = useState<any[]>([])
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null)
@@ -245,44 +248,67 @@ export const ChatTab = ({ client }: any) => {
   )
 }
 
+// --- SETTINGS TAB (COM LÓGICA QR CODE ORIGINAL) ---
 export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb, isSyncingSchedule, handleSaveBotConfig, isSavingBot, isEditing, setIsEditing, editForm, setEditForm, handleUpdateClient, botCapabilities, filteredTemplates }: any) => {
-  const [pairCode, setPairCode] = useState<string | null>(null);
-  const [phoneNumberInput, setPhoneNumberInput] = useState('');
-  const [loadingPair, setLoadingPair] = useState(false);
+  // Estados do QR Code
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [qrStatus, setQrStatus] = useState<'idle' | 'loading' | 'qrcode' | 'connected' | 'error'>('idle');
+  const [qrError, setQrError] = useState<string | null>(null);
+  const retryTimer = useRef<NodeJS.Timeout | null>(null);
 
-  const handleGeneratePairCode = async () => {
-      if (!botConfig.phoneId || !phoneNumberInput) {
-          alert("Preencha o Nome da Instância e o Número do WhatsApp.");
-          return;
-      }
-      
-      setLoadingPair(true);
-      setPairCode(null);
+  // Limpa o timer ao desmontar
+  useEffect(() => {
+    return () => {
+      if (retryTimer.current) clearTimeout(retryTimer.current)
+    }
+  }, [])
 
-      try {
-          const response = await fetch('/api/bot/connect', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                  instanceName: botConfig.phoneId,
-                  phoneNumber: phoneNumberInput
-              })
-          });
-          
-          const data = await response.json();
+  // Função para requisitar QR Code (Lógica Original Restaurada)
+  const handleRequestQr = async () => {
+    if (!botConfig.phoneId) {
+        alert("Defina um Nome da Instância (ID) e salve antes de conectar.");
+        return;
+    }
 
-          if (data.error) {
-              alert("Erro: " + data.error);
-          } else if (data.status === 'connected') {
-              alert("Esta instância já está conectada!");
-          } else if (data.code) {
-              setPairCode(data.code);
-          }
-      } catch (err) {
-          alert("Erro de conexão.");
-      } finally {
-          setLoadingPair(false);
-      }
+    setQrStatus('loading');
+    setQrCode(null);
+    setQrError(null);
+
+    try {
+        const res = await fetch('/api/bot/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ instanceName: botConfig.phoneId })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.error || 'Erro ao gerar QR');
+        }
+
+        if (data.status === 'connected') {
+             setQrStatus('connected');
+             return;
+        }
+
+        if (data.qrcode) {
+            setQrCode(data.qrcode);
+            setQrStatus('qrcode');
+
+            // Auto-refresh a cada 25s pois o QR do WhatsApp expira
+            if (retryTimer.current) clearTimeout(retryTimer.current);
+            retryTimer.current = setTimeout(() => {
+                handleRequestQr();
+            }, 25000);
+        } else {
+             throw new Error('QR não retornado pela API');
+        }
+
+    } catch (err: any) {
+        setQrError(err.message);
+        setQrStatus('error');
+    }
   };
 
   return (
@@ -303,44 +329,53 @@ export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb,
                           <div className="space-y-1"><label className="text-[10px] font-bold text-yellow-500 uppercase flex items-center gap-1"><Sparkles size={10}/> Prompt Mestre (Admin)</label><textarea className="w-full bg-[#050505] border border-yellow-500/20 rounded-lg p-3 text-gray-300 text-sm focus:border-yellow-500/50 font-mono" rows={3} value={botConfig.aiPersona} onChange={e => setBotConfig({...botConfig, aiPersona: e.target.value})} /></div>
                           <div className="space-y-1"><div className="flex justify-between"><label className="text-[10px] font-bold text-blue-400 uppercase">Contexto: Horários</label><button onClick={syncScheduleFromDb} disabled={isSyncingSchedule} className="text-[10px] text-gray-500 hover:text-white flex items-center gap-1">{isSyncingSchedule ? <RefreshCcw size={10} className="animate-spin"/> : 'Sincronizar'}</button></div><input type="text" className="w-full bg-[#050505] border border-blue-500/20 rounded-lg p-2.5 text-gray-300 text-sm focus:border-blue-500/50" value={botConfig.openingHours} onChange={e => setBotConfig({...botConfig, openingHours: e.target.value})} /></div>
                           
-                          {/* CONEXÃO VIA PAIRING CODE */}
+                          {/* AREA DE CONEXÃO WHATSAPP (EVOLUTION) */}
                           <div className="pt-4 border-t border-white/5 space-y-4 bg-white/[0.02] p-4 rounded-xl border border-white/5">
                               <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-green-500 uppercase flex items-center gap-1"><Smartphone size={12}/> Nome da Instância</label>
+                                  <label className="text-[10px] font-bold text-green-500 uppercase flex items-center gap-1"><Smartphone size={12}/> Nome da Instância (ID)</label>
                                   <input placeholder="Ex: imobiliaria_clientzy_01" className="w-full bg-[#050505] border border-white/10 rounded-lg p-2 text-xs font-mono text-gray-400 focus:border-green-500 outline-none" value={botConfig.phoneId} onChange={e => setBotConfig({...botConfig, phoneId: e.target.value})} />
+                                  <p className="text-[9px] text-gray-500">Este ID cria a conexão na VPS.</p>
                               </div>
-
-                              {!pairCode ? (
-                                <div className="space-y-2 pt-2 animate-in fade-in">
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1"><Hash size={10}/> Número do WhatsApp (com DDD)</label>
-                                        <input 
-                                            placeholder="Ex: 5531999998888" 
-                                            className="w-full bg-[#050505] border border-white/10 rounded-lg p-2 text-xs font-mono text-white focus:border-green-500 outline-none" 
-                                            value={phoneNumberInput} 
-                                            onChange={e => setPhoneNumberInput(e.target.value.replace(/\D/g, ''))} 
-                                        />
-                                    </div>
-                                    <button 
-                                        type="button"
-                                        onClick={handleGeneratePairCode}
-                                        disabled={loadingPair || !botConfig.phoneId || !phoneNumberInput}
-                                        className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-green-900/20 disabled:opacity-50"
-                                    >
-                                        {loadingPair ? <Loader2 size={16} className="animate-spin"/> : <Smartphone size={16}/>}
-                                        {loadingPair ? 'Solicitando...' : 'Gerar Código de Conexão'}
-                                    </button>
-                                </div>
-                              ) : (
-                                <div className="pt-2 text-center animate-in zoom-in duration-300">
-                                    <p className="text-[10px] text-gray-400 mb-2">Abra o WhatsApp {'>'} Aparelhos Conectados {'>'} Conectar com número</p>
-                                    <div className="bg-white/10 border border-white/20 p-4 rounded-xl">
-                                        <span className="text-3xl font-mono font-bold text-white tracking-widest">{pairCode}</span>
-                                    </div>
-                                    <p className="text-[10px] text-green-400 mt-2">Código gerado! Digite no seu celular.</p>
-                                    <button onClick={() => setPairCode(null)} className="text-[10px] text-gray-500 underline mt-2">Tentar outro número</button>
-                                </div>
-                              )}
+                              
+                              {/* PAINEL DE QR CODE */}
+                              <div className="pt-2 flex flex-col items-center">
+                                  {qrStatus === 'connected' ? (
+                                      <div className="w-full p-4 bg-green-500/20 border border-green-500/30 rounded-xl text-center text-green-400 font-bold text-sm flex items-center justify-center gap-2 animate-in zoom-in">
+                                          <CheckCircle size={18}/> WhatsApp Conectado e Operante!
+                                      </div>
+                                  ) : qrStatus === 'loading' ? (
+                                      <div className="w-full py-6 text-center text-gray-400 animate-pulse flex flex-col items-center">
+                                          <Loader2 size={24} className="animate-spin mb-2 text-green-500"/>
+                                          <span className="text-xs">Gerando QR Code... Aguarde o servidor.</span>
+                                      </div>
+                                  ) : qrStatus === 'qrcode' && qrCode ? (
+                                      <div className="text-center space-y-3 animate-in zoom-in duration-300">
+                                          <p className="text-xs text-white font-bold">Escaneie com o WhatsApp:</p>
+                                          <div className="bg-white p-2 rounded-lg inline-block">
+                                              <img src={`data:image/png;base64,${qrCode}`} alt="QR Code WhatsApp" className="w-48 h-48 object-contain" />
+                                          </div>
+                                          <p className="text-[10px] text-gray-500 flex items-center justify-center gap-1">
+                                            <RefreshCcw size={10} className="animate-spin"/> Atualiza a cada 25s
+                                          </p>
+                                      </div>
+                                  ) : (
+                                      <div className="w-full">
+                                          {qrStatus === 'error' && (
+                                              <div className="mb-3 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 text-center">
+                                                  {qrError} <br/> <span className="underline cursor-pointer" onClick={handleRequestQr}>Tentar novamente</span>
+                                              </div>
+                                          )}
+                                          <button 
+                                            type="button"
+                                            onClick={handleRequestQr}
+                                            disabled={!botConfig.phoneId}
+                                            className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-green-900/20 disabled:opacity-50"
+                                          >
+                                              <QrCode size={16}/> Gerar QR Code de Conexão
+                                          </button>
+                                      </div>
+                                  )}
+                              </div>
                               
                               <div className="hidden">
                                   <input type="password" value={botConfig.accessToken} onChange={e => setBotConfig({...botConfig, accessToken: e.target.value})} />
@@ -378,6 +413,7 @@ export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb,
   )
 }
 
+// --- NOTIFICATIONS TAB ---
 export const NotificationsTab = ({ notifications, markAsRead, loadingNotifications, fetchNotifications }: any) => (
   <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4">
       <div className="flex justify-between items-center mb-6">
@@ -420,6 +456,7 @@ export const NotificationsTab = ({ notifications, markAsRead, loadingNotificatio
   </div>
 )
 
+// --- CATALOG TAB ---
 export const CatalogTab = ({ client, isRealEstate, isServiceType, products, setIsProductModalOpen, labels, toggleProductStatus, handleDeleteProduct }: any) => (
   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex justify-between items-end">
@@ -461,6 +498,7 @@ export const CatalogTab = ({ client, isRealEstate, isServiceType, products, setI
   </div>
 )
 
+// --- APPOINTMENTS TAB ---
 export const AppointmentsTab = ({ client, loadingAppts, apptFilter, setApptFilter, appointmentsList, isRealEstate, router }: any) => (
   <div className="animate-in fade-in slide-in-from-bottom-2 space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -528,6 +566,7 @@ export const AppointmentsTab = ({ client, loadingAppts, apptFilter, setApptFilte
   </div>
 )
 
+// --- ORDERS TAB ---
 export const OrdersTab = ({ isServiceType, fetchClientOrders, clientOrders, handleAdvanceStatus, handleCancelOrder, client }: any) => {
     const getStatusStyle = (status: string) => {
       switch(status) {

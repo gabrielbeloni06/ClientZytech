@@ -1,16 +1,39 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabaseClient'
-import { AVAILABLE_TEMPLATES_LIST } from '@/lib/bots/registry'
+
+import { useState, useEffect, useRef } from 'react'
 import { 
-  ArrowLeft, Key, CreditCard,
-  Briefcase, ShoppingCart, Calendar, Scissors, 
-  List, Package, User, LayoutDashboard, Sparkles,
-  Home, Building, Tag, X, Save, Settings, Plus, Bell,
-  MessageCircle, MessageSquare
+  TrendingUp, Power, FileText, Bot, Sparkles, RefreshCcw, Briefcase, Save, 
+  Home, Scissors, Package, Plus, MapPin, Clock, CheckCircle, XCircle, Truck, 
+  ChefHat, Phone, Calendar, ExternalLink, MessageCircle, Filter, User, Link as LinkIcon,
+  ShoppingCart, List, X, Settings, Brain, Trash2, ArrowRight, HelpCircle, Bell, UserPlus,
+  MessageSquare, Search, Send, Loader2, QrCode, Smartphone, Key
 } from 'lucide-react'
-import { OverviewTab, SettingsTab, CatalogTab, AppointmentsTab, OrdersTab, NotificationsTab, ChatTab } from './tabs'
+
+// --- MOCKS E UTILITÁRIOS (Para garantir que funcione sem dependências externas no preview) ---
+
+// Simulação do Supabase (Substitua pelo import real no seu projeto: import { supabase } from '@/lib/supabaseClient')
+import { createClient } from '@supabase/supabase-js'
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder'
+const supabase = createClient(supabaseUrl, supabaseKey)
+
+// Simulação do Next Navigation (Substitua por: import { useParams, useRouter } from 'next/navigation')
+// Para o preview funcionar, usamos hooks simples se o next/navigation falhar
+let useParams: any = () => ({ id: '1' })
+let useRouter: any = () => ({ push: (url: string) => console.log('Nav:', url), refresh: () => console.log('Refresh') })
+try {
+  const nav = require('next/navigation')
+  useParams = nav.useParams
+  useRouter = nav.useRouter
+} catch (e) {}
+
+// Registro de Templates (Mock)
+const AVAILABLE_TEMPLATES_LIST = [
+    { id: 'imobiliaria_basico', label: 'Imobiliária: Consultor IA' },
+    { id: 'delivery_padrao', label: 'Delivery: Atendente' },
+    { id: 'scheduling_core', label: 'Agendamento: Core' },
+    { id: 'comercio_basico', label: 'Comércio: Balcão' }
+]
 
 const TEMPLATES_BY_PLAN: Record<string, string[]> = {
     'ZyStart': ['comercio_basico', 'comercio_agendamento', 'delivery_padrao', 'imobiliaria_basico'],
@@ -19,370 +42,631 @@ const TEMPLATES_BY_PLAN: Record<string, string[]> = {
     'ZyCore': ['scheduling_core', 'delivery_core']
 }
 
-export default function ClientDetailsPage() {
-  const params = useParams()
-  const router = useRouter()
-  
-  const [role, setRole] = useState<string>('')
-  const [client, setClient] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('overview') 
-  
-  const [products, setProducts] = useState<any[]>([])
-  const [clientOrders, setClientOrders] = useState<any[]>([])
-  const [notifications, setNotifications] = useState<any[]>([])
-  const [loadingNotifications, setLoadingNotifications] = useState(false)
-  
-  const [botConfig, setBotConfig] = useState({
-    isActive: false, phoneId: '', accessToken: '', greeting: '', personality: '', 
-    aiPersona: '', openingHours: '', template: '', planLevel: 'ZyStart', aiFaq: ''
-  })
-  const [isSavingBot, setIsSavingBot] = useState(false)
-  const [isSyncingSchedule, setIsSyncingSchedule] = useState(false)
+// --- COMPONENTES DAS ABAS (TABS) ---
 
-  const [isEditing, setIsEditing] = useState(false)
-  const [editForm, setEditForm] = useState({ name: '', plan: '', value: '', cycle: '', payment_method: '', valid_until: '' })
-
-  const [isProductModalOpen, setIsProductModalOpen] = useState(false)
-  const [prodName, setProdName] = useState(''); const [prodPrice, setProdPrice] = useState('')
-  const [prodCategory, setProdCategory] = useState(''); const [prodHasStockLimit, setProdHasStockLimit] = useState(false)
-  const [prodStockQuantity, setProdStockQuantity] = useState(''); const [prodAddress, setProdAddress] = useState('')
-  const [prodNeighborhood, setProdNeighborhood] = useState(''); const [prodLink, setProdLink] = useState('')
-  const [prodDetails, setProdDetails] = useState('')
-  const [isSavingProd, setIsSavingProd] = useState(false)
-
-  const [customCategories, setCustomCategories] = useState<string[]>([])
-  const [newCategoryInput, setNewCategoryInput] = useState('')
-  const [isSavingCategories, setIsSavingCategories] = useState(false)
-
-  const [appointmentsList, setAppointmentsList] = useState<any[]>([])
-  const [apptFilter, setApptFilter] = useState('month')
-  const [loadingAppts, setLoadingAppts] = useState(false)
-
-  const [reportDate, setReportDate] = useState(new Date())
-  const [monthlyStats, setMonthlyStats] = useState<any[]>([])
-  const [loadingStats, setLoadingStats] = useState(false)
-
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
-  const [generatedCreds, setGeneratedCreds] = useState<{email:string, pass:string} | null>(null)
-  const [loginEmail, setLoginEmail] = useState('')
-  const [isCreatingUser, setIsCreatingUser] = useState(false)
-
-  const [notes, setNotes] = useState(''); const [isSavingNotes, setIsSavingNotes] = useState(false)
-
-  useEffect(() => { if (params?.id) loadAllData() }, [params?.id])
-  useEffect(() => { 
-    if (client) { 
-        if (client.business_type === 'real_estate') {
-             fetchRealEstateStats()
-        } else {
-             generateMockFinancialData()
-        }
-        
-        if (client.business_type === 'delivery') { 
-            const interval = setInterval(fetchClientOrders, 30000); 
-            return () => clearInterval(interval) 
-        }
-        
-        if (client.plan.includes('ZyBotAI') || client.plan.includes('ZyCore')) {
-            fetchNotifications()
-            const notifInterval = setInterval(fetchNotifications, 60000);
-            return () => clearInterval(notifInterval)
-        }
-    } 
-  }, [client, reportDate])
-  
-  useEffect(() => { if (activeTab === 'appointments' && client?.id) { fetchClientAppointments() } }, [activeTab, apptFilter, client?.id])
-
-  function formatScheduleToString(schedules: any[]) {
-    if (!schedules || schedules.length === 0) return ''
-    const days = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']; let text = '';
-    [...schedules].sort((a, b) => a.day_of_week - b.day_of_week).forEach(s => {
-        if (s.is_active && s.slots && s.slots.length > 0) text += `${days[s.day_of_week]}: ${s.slots.sort()[0]} às ${s.slots[s.slots.length - 1]}. `
-    })
-    return text.trim()
-  }
-
-  async function syncScheduleFromDb() {
-    setIsSyncingSchedule(true)
-    try {
-        const { data: schedules } = await supabase.from('base_schedules').select('*').eq('organization_id', client.id)
-        const scheduleText = formatScheduleToString(schedules || [])
-        if (scheduleText) setBotConfig(prev => ({ ...prev, openingHours: scheduleText }))
-        else alert('Nenhuma agenda configurada encontrada.')
-    } catch (error) { console.error(error) } finally { setIsSyncingSchedule(false) }
-  }
-
-  async function fetchClientOrders() {
-      const { data: orderData } = await supabase.from('orders').select('*').eq('organization_id', params.id).order('created_at', { ascending: false }).limit(50)
-      setClientOrders(orderData || [])
-  }
-  
-  async function fetchNotifications() {
-      setLoadingNotifications(true)
-      const { data } = await supabase.from('notifications').select('*').eq('organization_id', client.id).eq('is_read', false).order('created_at', { ascending: false })
-      setNotifications(data || [])
-      setLoadingNotifications(false)
-  }
-  
-  async function markAsRead(id: string) {
-      setNotifications(notifications.filter(n => n.id !== id))
-      await supabase.from('notifications').update({ is_read: true }).eq('id', id)
-  }
-
-  async function loadAllData() {
-    setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/'); return }
-    const { data: profile } = await supabase.from('profiles').select('role, organization_id').eq('id', user.id).single()
-    const userRole = profile?.role || 'org_owner'; setRole(userRole)
-    if (userRole !== 'super_admin' && profile?.organization_id !== params.id) { alert('Acesso negado.'); router.push('/dashboard'); return }
-    const { data: clientData, error } = await supabase.from('organizations').select('*').eq('id', params.id).single()
-    if (error || !clientData) { router.push(userRole === 'super_admin' ? '/dashboard/clients' : '/dashboard'); return }
-    setClient(clientData); setNotes(clientData.notes || '')
-    const { data: schedules } = await supabase.from('base_schedules').select('*').eq('organization_id', params.id)
-    
-    setBotConfig({
-        isActive: clientData.bot_status || false, phoneId: clientData.whatsapp_phone_id || '', accessToken: clientData.whatsapp_access_token || '',
-        greeting: clientData.bot_greeting_message || '', personality: clientData.bot_personality || '', aiPersona: clientData.ai_persona || '',
-        openingHours: clientData.opening_hours || formatScheduleToString(schedules || []) || 'Segunda a Sexta, das 09:00 às 18:00',
-        template: clientData.bot_template || '', planLevel: clientData.plan || 'ZyStart', aiFaq: clientData.ai_faq || ''
-    })
-    let initialCats = clientData.service_categories || []
-    if (initialCats.length === 0) {
-       const type = clientData.business_type
-       if (type === 'service' || type === 'commerce') initialCats = ['Combos', 'Produtos', 'Outros']
-       else if (type === 'real_estate') initialCats = ['Casa', 'Apartamento', 'Lote/Terreno', 'Comercial', 'Aluguel']
-       else initialCats = ['Lanches', 'Bebidas', 'Combos', 'Sobremesas', 'Outros']
-    }
-    setCustomCategories(initialCats)
-    if (userRole === 'super_admin') setLoginEmail(`admin@${clientData.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`)
-    setEditForm({
-        name: clientData.name, plan: clientData.plan, value: String(clientData.subscription_value || '0'), cycle: clientData.subscription_cycle,
-        payment_method: clientData.payment_method || 'pix', valid_until: clientData.subscription_valid_until ? new Date(clientData.subscription_valid_until).toISOString().split('T')[0] : ''
-    })
-    const { data: prodData } = await supabase.from('products').select('*').eq('organization_id', params.id).order('created_at', { ascending: false })
-    setProducts(prodData || [])
-    if (['delivery', 'commerce', 'service'].includes(clientData.business_type)) await fetchClientOrders()
-    setLoading(false)
-  }
-
-  async function handleCancelOrder(orderId: string) {
-    if (!confirm('Cancelar este pedido?')) return;
-    setClientOrders(clientOrders.map(o => o.id === orderId ? { ...o, status: 'canceled' } : o))
-    await supabase.from('orders').update({ status: 'canceled' }).eq('id', orderId)
-  }
-  async function handleAdvanceStatus(order: any) {
-    const nextStatus: any = { 'pending': 'preparing', 'preparing': 'delivery', 'delivery': 'finished', 'finished': 'finished' }
-    const newStatus = nextStatus[order.status] || order.status
-    setClientOrders(clientOrders.map(o => o.id === order.id ? { ...o, status: newStatus } : o))
-    await supabase.from('orders').update({ status: newStatus }).eq('id', order.id)
-  }
-  
-  async function handleSaveBotConfig() {
-    setIsSavingBot(true)
-    const { error } = await supabase.from('organizations').update({
-        bot_status: botConfig.isActive, whatsapp_phone_id: botConfig.phoneId, whatsapp_access_token: botConfig.accessToken,
-        bot_greeting_message: botConfig.greeting, bot_personality: botConfig.personality, ai_persona: botConfig.aiPersona,
-        opening_hours: botConfig.openingHours, bot_template: botConfig.template, plan: botConfig.planLevel, ai_faq: botConfig.aiFaq
-    }).eq('id', client.id)
-    
-    if (error) {
-        alert('Erro ao salvar: ' + error.message)
-    } else {
-        alert('Salvo com sucesso!'); 
-        setClient({...client, plan: botConfig.planLevel}); 
-        setEditForm(prev => ({...prev, plan: botConfig.planLevel}))
-    }
-    setIsSavingBot(false)
-  }
-  
-  const getFilteredTemplates = () => {
-      const allowedIds = TEMPLATES_BY_PLAN[botConfig.planLevel] || []
-      return AVAILABLE_TEMPLATES_LIST.filter(t => allowedIds.includes(t.id))
-  }
-  async function handleAddProduct(e: React.FormEvent) { 
-    e.preventDefault(); setIsSavingProd(true); const priceFormatted = parseFloat(prodPrice.replace(',', '.')); 
-    const insertData: any = { organization_id: client.id, name: prodName, price: isNaN(priceFormatted) ? 0 : priceFormatted, category: prodCategory || (client.business_type === 'real_estate' ? 'Imóvel' : labels.category), is_available: true, track_stock: prodHasStockLimit, stock_quantity: prodHasStockLimit ? parseInt(prodStockQuantity) : null, property_details: prodDetails };
-    if (client.business_type === 'real_estate') { insertData.address = prodAddress; insertData.neighborhood = prodNeighborhood; insertData.property_link = prodLink; insertData.track_stock = false; insertData.stock_quantity = 1; }
-    const { error } = await supabase.from('products').insert([insertData]); 
-    if (!error) { setIsProductModalOpen(false); setProdName(''); setProdPrice(''); setProdCategory(''); setProdHasStockLimit(false); setProdStockQuantity(''); setProdAddress(''); setProdNeighborhood(''); setProdLink(''); setProdDetails(''); loadAllData() } else alert(error.message); 
-    setIsSavingProd(false) 
-  }
-  async function toggleProductStatus(p: any) { setProducts(products.map(i => i.id === p.id ? {...i, is_available: !i.is_available} : i)); await supabase.from('products').update({ is_available: !p.is_available }).eq('id', p.id) }
-  async function handleDeleteProduct(id: string) { if(confirm('Excluir?')) { setProducts(products.filter(p => p.id !== id)); await supabase.from('products').delete().eq('id', id) } }
-  
-  async function fetchRealFinancialStats() {
-    setLoadingStats(true)
-    const mock = Array(6).fill(0).map((_, i) => ({ label: 'Mês ' + (i+1), value: Math.random() * 5000, isCurrent: i===5 }))
-    setMonthlyStats(mock); setLoadingStats(false)
-  }
-
-  async function fetchRealEstateStats() {
-      setLoadingStats(true)
-      const currentYear = reportDate.getFullYear()
-      const currentMonth = reportDate.getMonth()
-      const endDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59)
-      const startDate = new Date(currentYear, currentMonth - 5, 1, 0, 0, 0)
-      const { data: appts, error } = await supabase.from('appointments').select('appointment_date').eq('organization_id', client.id).eq('status', 'confirmed').gte('appointment_date', startDate.toISOString()).lte('appointment_date', endDate.toISOString())
-      if (error) { setLoadingStats(false); return }
-      const statsMap = new Map()
-      for (let i = 5; i >= 0; i--) {
-          const d = new Date(currentYear, currentMonth - i, 1)
-          const key = d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
-          const statsMapVal = { label: d.toLocaleDateString('pt-BR', { month: 'short' }).toUpperCase().replace('.', ''), fullDate: d, value: 0, isCurrent: i === 0 }
-          statsMap.set(key, statsMapVal)
-      }
-      appts?.forEach(a => {
-          const date = new Date(a.appointment_date)
-          const key = date.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
-          if (statsMap.has(key)) {
-              const current = statsMap.get(key)
-              current.value += 1 
-              statsMap.set(key, current)
-          }
-      })
-      setMonthlyStats(Array.from(statsMap.values()))
-      setLoadingStats(false)
-  }
-
-  function generateMockFinancialData() {  }
-  function changeReportMonth(direction: 'prev' | 'next') { const newDate = new Date(reportDate); if (direction === 'prev') newDate.setMonth(newDate.getMonth() - 1); else newDate.setMonth(newDate.getMonth() + 1); setReportDate(newDate) }
-  async function fetchClientAppointments() { 
-    if (!client?.id) return; setLoadingAppts(true); 
-    let query = supabase.from('appointments').select(`*, products (name, neighborhood, property_link)`).eq('organization_id', client.id).order('appointment_date', { ascending: false }); 
-    const { data, error } = await query; 
-    if (!error) setAppointmentsList(data || []); setLoadingAppts(false) 
-  }
-
-  function generatePassword() { return Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-2); }
-  async function handleGenerateLogin() { setIsCreatingUser(true); const pass = generatePassword(); try { const response = await fetch('/api/admin/create-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: loginEmail, password: pass, organization_id: client.id, name: client.name }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error); setGeneratedCreds({ email: loginEmail, pass: pass }) } catch (err: any) { alert('Erro: ' + err.message) } finally { setIsCreatingUser(false) } }
-  async function handleUpdateClient(e: React.FormEvent) { e.preventDefault(); if (role !== 'super_admin') return; const valFloat = parseFloat(String(editForm.value).replace(',', '.')); await supabase.from('organizations').update({ name: editForm.name, plan: editForm.plan, subscription_value: isNaN(valFloat) ? 0 : valFloat, subscription_cycle: editForm.cycle, payment_method: editForm.payment_method, subscription_valid_until: new Date(editForm.valid_until).toISOString() }).eq('id', client.id); setIsEditing(false); loadAllData(); alert('Dados atualizados!') }
-  async function handleDeleteClient() { if (role !== 'super_admin') return; if (confirm(`Excluir ${client.name}?`)) { await supabase.from('organizations').delete().eq('id', client.id); router.push('/dashboard/clients') } }
-  async function handleSaveNotes() { setIsSavingNotes(true); await supabase.from('organizations').update({ notes: notes }).eq('id', client.id); setIsSavingNotes(false) }
-  async function handleSaveCategories() { setIsSavingCategories(true); const { error } = await supabase.from('organizations').update({ service_categories: customCategories }).eq('id', client.id); if (error) alert('Erro: ' + error.message); else alert('Categorias atualizadas!'); setIsSavingCategories(false) }
-  function handleAddCategory(e: React.FormEvent) { e.preventDefault(); if (!newCategoryInput.trim() || customCategories.includes(newCategoryInput.trim())) return; setCustomCategories([...customCategories, newCategoryInput.trim()]); setNewCategoryInput('') }
-  function handleRemoveCategory(cat: string) { if(confirm('Remover?')) setCustomCategories(customCategories.filter(c => c !== cat)) }
-
-  const getBotCapabilities = () => {
-    const plan = botConfig.planLevel || client?.plan || ''
-    const type = client?.business_type
-    const hasAI = plan.includes('ZyBotAI') || plan.includes('ZyCore') || (type === 'delivery' && plan.includes('ZyControl'))
-    const customizable = plan.includes('ZyCore')
-    let label = ''; let description = ''
-    if (plan.includes('ZyStart')) { label = 'Bot Estático (Menu)'; description = 'Apenas menus numéricos. Sem compreensão de linguagem.' } 
-    else if (!hasAI) { label = 'Bot Estruturado'; description = 'Fluxo de agendamento passo-a-passo sem IA generativa.' } 
-    else if (customizable) { label = 'IA Personalizável 🧠'; description = 'Inteligência Artificial avançada com personalidade única.' } 
-    else { label = 'IA Padrão 🤖'; description = 'Inteligência Artificial treinada para vendas.' }
-    return { hasAI, customizable, label, description }
-  }
-
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#020202] text-blue-500 animate-pulse font-mono">Carregando painel...</div>
-  if (!client) return null
-
-  const isDelivery = client?.business_type === 'delivery'; const isCommerce = client?.business_type === 'commerce'; const isService = client?.business_type === 'service'; 
-  const isRealEstate = client?.business_type === 'real_estate'; 
-  const isServiceType = isService || isCommerce; 
-  const showAppointments = isServiceType || isRealEstate; 
-  const labels = { item: isServiceType ? 'Serviço' : isRealEstate ? 'Imóvel' : 'Item', menu: isRealEstate ? 'Carteira de Imóveis' : 'Catálogo', add: isServiceType ? 'Adicionar Serviço' : isRealEstate ? 'Adicionar Imóvel' : 'Adicionar Item', category: isServiceType ? 'Serviços' : isRealEstate ? 'Tipos' : 'Geral' }
-  const getBotCaps = getBotCapabilities()
-  const showNotifications = client.plan.includes('ZyBotAI') || client.plan.includes('ZyCore')
+const NeonLineChart = ({ currentData, prevTotal }: { currentData: number[], prevTotal: number }) => {
+  const height = 60
+  const width = 200
+  const maxVal = Math.max(...currentData, 1)
+  const points = currentData.map((val, i) => {
+    const x = (i / (currentData.length - 1)) * width
+    const y = height - (val / maxVal) * height
+    return `${x},${y}`
+  }).join(' ')
 
   return (
-    <div className="min-h-screen bg-[#020202] text-white font-sans selection:bg-blue-500/30">
-      <div className="fixed top-0 right-0 w-[500px] h-[500px] bg-blue-900/10 blur-[120px] rounded-full pointer-events-none"></div>
-      <div className="fixed bottom-0 left-0 w-[500px] h-[500px] bg-purple-900/10 blur-[120px] rounded-full pointer-events-none"></div>
-
-      <div className="max-w-7xl mx-auto p-6 md:p-10 relative z-10 space-y-8">
-        <div className="flex flex-col gap-6">
-            <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-500 hover:text-white w-fit transition-colors group">
-            <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform"/> {role === 'super_admin' ? 'Voltar para Lista' : 'Voltar ao Início'}
-            </button>
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 pb-6 border-b border-white/5">
-                <div>
-                    <h1 className="text-4xl font-bold flex items-center gap-3 bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
-                    {client.name}
-                    </h1>
-                    <div className="flex items-center gap-3 mt-3 text-sm">
-                        <span className={`px-2 py-0.5 rounded-md border text-[10px] uppercase font-bold tracking-wider ${client.status === 'active' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>{client.status === 'active' ? '● Ativo' : '● Suspenso'}</span>
-                        <span className="flex items-center gap-1.5 bg-white/5 px-2.5 py-0.5 rounded-md border border-white/5 capitalize text-gray-300">
-                            {isRealEstate ? <Home size={12}/> : isServiceType ? <Scissors size={12}/> : <Tag size={12}/>} 
-                            {client.business_type === 'real_estate' ? 'Imobiliária' : client.business_type}
-                        </span>
-                    </div>
-                </div>
-                {role === 'super_admin' && (
-                    <div className="flex gap-3">
-                        <button onClick={() => setIsLoginModalOpen(true)} className="flex items-center gap-2 px-4 py-2.5 bg-purple-500/10 text-purple-400 border border-purple-500/30 hover:bg-purple-500/20 rounded-xl text-xs font-bold transition-all hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(168,85,247,0.15)]">
-                            <Key size={14} /> Gerar Acesso
-                        </button>
-                    </div>
-                )}
-            </div>
-        </div>
-
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            {[
-                { id: 'overview', label: 'Visão Geral', icon: LayoutDashboard },
-                { id: 'chat', label: 'Bate-papo', icon: MessageSquare },
-                { id: 'contract', label: 'Configurações', icon: Settings },
-                showNotifications && { id: 'notifications', label: 'Alertas', icon: Bell }, 
-                { id: 'bot_catalog', label: isRealEstate ? 'Imóveis' : 'Catálogo Bot', icon: isRealEstate ? Home : Package },
-                { id: 'categories', label: 'Categorias', icon: List },
-                showAppointments && { id: 'appointments', label: 'Agendamentos', icon: Calendar },
-                (isDelivery || isCommerce || isService) && { id: 'orders', label: isServiceType ? 'Serviços' : 'Pedidos', icon: ShoppingCart }
-            ].filter(Boolean).map((tab: any) => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 ${activeTab === tab.id ? 'bg-blue-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)]' : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-transparent hover:border-white/5'}`}>
-                    <tab.icon size={16}/> {tab.label}
-                </button>
-            ))}
-        </div>
-
-        <div className="min-h-[400px]">
-            {activeTab === 'overview' && <OverviewTab monthlyStats={monthlyStats} loadingStats={loadingStats} notes={notes} setNotes={setNotes} handleSaveNotes={handleSaveNotes} isSavingNotes={isSavingNotes} unit={isRealEstate ? '' : 'R$'} statLabel={isRealEstate ? 'Visitas Realizadas' : 'Performance'} />}
-            {activeTab === 'chat' && <ChatTab client={client} />}
-            {activeTab === 'contract' && <SettingsTab role={role} botConfig={botConfig} setBotConfig={setBotConfig} syncScheduleFromDb={syncScheduleFromDb} isSyncingSchedule={isSyncingSchedule} handleSaveBotConfig={handleSaveBotConfig} isSavingBot={isSavingBot} isEditing={isEditing} setIsEditing={setIsEditing} editForm={editForm} setEditForm={setEditForm} handleUpdateClient={handleUpdateClient} botCapabilities={getBotCaps} filteredTemplates={getFilteredTemplates()} />}
-            {activeTab === 'notifications' && showNotifications && <NotificationsTab notifications={notifications} markAsRead={markAsRead} loadingNotifications={loadingNotifications} fetchNotifications={fetchNotifications} />}
-            {activeTab === 'bot_catalog' && <CatalogTab client={client} isRealEstate={isRealEstate} isServiceType={isServiceType} products={products} setIsProductModalOpen={setIsProductModalOpen} labels={labels} toggleProductStatus={toggleProductStatus} handleDeleteProduct={handleDeleteProduct} />}
-            {activeTab === 'categories' && <div className="max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4"><div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl p-6"><h3 className="font-bold text-lg text-white mb-4">Categorias</h3><div className="flex flex-wrap gap-2 mb-6">{customCategories.map(cat => (<div key={cat} className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 flex items-center gap-2"><span className="text-sm font-medium text-gray-300">{cat}</span><button onClick={() => handleRemoveCategory(cat)}><X size={14}/></button></div>))}</div><form onSubmit={handleAddCategory} className="flex gap-2"><input type="text" placeholder="Nova categoria..." className="flex-1 bg-[#050505] border border-white/10 rounded-xl px-4 py-3 text-white outline-none" value={newCategoryInput} onChange={e => setNewCategoryInput(e.target.value)} /><button type="submit" className="bg-white/10 text-white px-5 rounded-xl font-bold"><Plus size={20}/></button></form><div className="mt-4 flex justify-end"><button onClick={handleSaveCategories} className="text-blue-400 font-bold">Salvar</button></div></div></div>}
-            {showAppointments && activeTab === 'appointments' && <AppointmentsTab client={client} loadingAppts={loadingAppts} apptFilter={apptFilter} setApptFilter={setApptFilter} appointmentsList={appointmentsList} isRealEstate={isRealEstate} router={router} />}
-            {(isDelivery || isCommerce || isService) && activeTab === 'orders' && <OrdersTab isServiceType={isServiceType} fetchClientOrders={fetchClientOrders} clientOrders={clientOrders} handleAdvanceStatus={handleAdvanceStatus} handleCancelOrder={handleCancelOrder} client={client} />}
-        </div>
+    <div className="relative h-48 w-full bg-gradient-to-b from-blue-500/5 to-transparent rounded-xl border border-blue-500/10 p-4 overflow-hidden group">
+      <div className="absolute inset-0 grid grid-rows-4 w-full h-full opacity-20 pointer-events-none">
+         <div className="border-t border-blue-500/20 border-dashed"></div>
+         <div className="border-t border-blue-500/20 border-dashed"></div>
+         <div className="border-t border-blue-500/20 border-dashed"></div>
       </div>
-
-      {isProductModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-            <div className="bg-[#0a0a0a] border border-white/10 w-full max-w-sm rounded-2xl shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-purple-500"></div>
-                <div className="p-6 space-y-5">
-                    <div className="flex justify-between items-center"><h3 className="text-lg font-bold text-white">{labels.add}</h3><button onClick={() => setIsProductModalOpen(false)} className="text-gray-500 hover:text-white"><X size={20}/></button></div>
-                    <form onSubmit={handleAddProduct} className="space-y-4">
-                        <input autoFocus placeholder={`Nome do ${labels.item}`} className="w-full bg-[#050505] border border-white/10 rounded-xl p-3 text-white focus:border-blue-500 outline-none" value={prodName} onChange={e => setProdName(e.target.value)} required />
-                        {isRealEstate && (
-                            <div className="space-y-4 animate-in slide-in-from-top-2">
-                                <input placeholder="Endereço Completo" className="w-full bg-[#050505] border border-white/10 rounded-xl p-3 text-white focus:border-blue-500 outline-none" value={prodAddress} onChange={e => setProdAddress(e.target.value)} />
-                                <div className="grid grid-cols-2 gap-3"><input placeholder="Bairro" className="w-full bg-[#050505] border border-white/10 rounded-xl p-3 text-white focus:border-blue-500 outline-none" value={prodNeighborhood} onChange={e => setProdNeighborhood(e.target.value)} /><input placeholder="Link do Imóvel (URL)" className="w-full bg-[#050505] border border-white/10 rounded-xl p-3 text-white focus:border-blue-500 outline-none" value={prodLink} onChange={e => setProdLink(e.target.value)} /></div>
-                                <textarea placeholder="Detalhes (Ex: 120m², sol da manhã...)" className="w-full bg-[#050505] border border-white/10 rounded-xl p-3 text-white focus:border-blue-500 outline-none h-24 resize-none" value={prodDetails} onChange={e => setProdDetails(e.target.value)} />
-                            </div>
-                        )}
-                        <div className="flex gap-3"><input type="number" placeholder="Valor" className="w-1/2 bg-[#050505] border border-white/10 rounded-xl p-3 text-white focus:border-green-500 outline-none" value={prodPrice} onChange={e => setProdPrice(e.target.value)} required /><select className="w-1/2 bg-[#050505] border border-white/10 rounded-xl p-3 text-white outline-none" value={prodCategory} onChange={e => setProdCategory(e.target.value)}><option value="">Tipo/Categoria</option>{customCategories.map(cat => (<option key={cat} value={cat}>{cat}</option>))}</select></div>
-                        {!isRealEstate && (<div className="pt-2"><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Estoque</label><div className="flex gap-4 mb-2"><label className="flex items-center gap-2 cursor-pointer"><input type="radio" className="accent-blue-500" checked={!prodHasStockLimit} onChange={() => setProdHasStockLimit(false)} /><span className="text-sm text-gray-300">Ilimitado</span></label><label className="flex items-center gap-2 cursor-pointer"><input type="radio" className="accent-blue-500" checked={prodHasStockLimit} onChange={() => setProdHasStockLimit(true)} /><span className="text-sm text-gray-300">Controlado</span></label></div>{prodHasStockLimit && <input type="number" placeholder="Qtd. Inicial" className="w-full bg-[#050505] border border-white/10 rounded-xl p-3 text-white focus:border-blue-500 outline-none" value={prodStockQuantity} onChange={e => setProdStockQuantity(e.target.value)} />}</div>)}
-                        <button disabled={isSavingProd} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-bold shadow-[0_0_15px_rgba(37,99,235,0.3)] transition-all mt-2">{isSavingProd ? 'Salvando...' : `Salvar ${labels.item}`}</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-      )}
-
-      {role === 'super_admin' && isLoginModalOpen && (
-         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-            <div className="bg-[#0a0a0a] border border-white/10 w-full max-w-md rounded-2xl shadow-2xl p-6 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-pink-500"></div>
-                <div className="flex justify-between items-start mb-6"><div><h3 className="text-xl font-bold text-white flex items-center gap-2"><Key className="text-purple-500"/> Acesso do Cliente</h3><p className="text-gray-400 text-sm mt-1">Crie um login para o dono da empresa.</p></div><button onClick={() => setIsLoginModalOpen(false)}><X className="text-gray-500 hover:text-white"/></button></div>
-                {!generatedCreds ? (<div className="space-y-4"><input type="email" className="w-full bg-[#050505] border border-white/10 rounded-xl p-3 text-white focus:border-purple-500 outline-none" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)}/><button onClick={handleGenerateLogin} disabled={isCreatingUser} className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-xl shadow-[0_0_15px_rgba(168,85,247,0.3)] transition-all disabled:opacity-50">{isCreatingUser ? 'Gerando...' : 'Gerar Senha Segura'}</button></div>) : (<div className="space-y-6"><div className="bg-green-500/10 border border-green-500/20 p-4 rounded-xl text-center"><p className="text-green-400 font-bold mb-1">Sucesso!</p><p className="text-xs text-gray-400">Copie os dados abaixo e envie ao cliente.</p></div><div className="space-y-3"><div className="bg-[#050505] p-3 rounded-xl border border-white/10 font-mono text-white text-sm break-all">{generatedCreds.email}</div><div className="bg-[#050505] p-3 rounded-xl border border-white/10 font-mono text-yellow-400 text-lg tracking-widest text-center">{generatedCreds.pass}</div></div><button onClick={() => { setIsLoginModalOpen(false); setGeneratedCreds(null); }} className="w-full bg-white/5 hover:bg-white/10 text-white font-bold py-3 rounded-xl transition-colors border border-white/10">Fechar</button></div>)}
-            </div>
-        </div>
-      )}
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible" preserveAspectRatio="none">
+        <defs>
+          <filter id="neon-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+            <feMerge><feMergeNode in="coloredBlur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <linearGradient id="line-gradient" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#60a5fa" />
+            <stop offset="100%" stopColor="#a855f7" />
+          </linearGradient>
+        </defs>
+        <polyline points={points} fill="none" stroke="url(#line-gradient)" strokeWidth="2" filter="url(#neon-glow)" strokeLinecap="round" strokeLinejoin="round" className="drop-shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
+        <polygon points={`0,${height} ${points} ${width},${height}`} fill="url(#line-gradient)" opacity="0.1" />
+      </svg>
     </div>
   )
+}
+
+const OverviewTab = ({ monthlyStats, loadingStats, notes, setNotes, handleSaveNotes, isSavingNotes, unit = "R$", statLabel = "Performance" }: any) => (
+  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="lg:col-span-2 bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl p-6 relative overflow-hidden shadow-2xl">
+          <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 to-transparent pointer-events-none"></div>
+          <div className="flex justify-between items-center mb-8 relative z-10">
+              <div>
+                  <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-2"><TrendingUp size={14}/> {statLabel}</p>
+                  <h2 className="text-4xl font-bold text-white tracking-tight">
+                      {unit} {monthlyStats.length > 0 ? monthlyStats[monthlyStats.length-1].value.toLocaleString('pt-BR', {minimumFractionDigits: unit === 'R$' ? 2 : 0}) : '0'}
+                  </h2>
+              </div>
+          </div>
+          <div className="h-64 w-full flex items-end justify-between gap-3 relative z-10">
+              {monthlyStats.length === 0 && !loadingStats && (<div className="absolute inset-0 flex items-center justify-center text-gray-600 italic">Sem dados</div>)}
+              <NeonLineChart currentData={monthlyStats.map((s:any) => s.value)} prevTotal={0} />
+          </div>
+      </div>
+      <div className="space-y-6">
+          <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl p-6 flex flex-col justify-between h-[180px] shadow-lg group hover:border-green-500/30 transition-colors">
+              <div className="flex justify-between items-start">
+                  <div>
+                      <p className="text-gray-500 text-xs font-bold uppercase mb-1">Status do Sistema</p>
+                      <h3 className="text-xl font-bold text-white flex items-center gap-2">Operacional</h3>
+                  </div>
+                  <div className="p-2 bg-green-500/10 rounded-lg border border-green-500/20"><Power size={20} className="text-green-500"/></div>
+              </div>
+              <div className="flex items-center gap-3">
+                  <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span></span>
+                  <span className="text-sm text-green-400 font-mono">Conexão Estável</span>
+              </div>
+          </div>
+          <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl p-6 flex flex-col h-[calc(100%-204px)] shadow-lg">
+              <div className="flex justify-between items-center mb-4">
+                  <span className="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><FileText size={14}/> Notas Internas</span>
+                  <button onClick={handleSaveNotes} disabled={isSavingNotes} className="text-[10px] font-bold bg-blue-600/20 text-blue-400 px-2 py-1 rounded hover:bg-blue-600/40 transition-colors">{isSavingNotes ? '...' : 'SALVAR'}</button>
+              </div>
+              <textarea className="flex-1 bg-black/40 border border-white/5 rounded-xl p-3 text-sm text-gray-300 outline-none resize-none focus:border-blue-500/50 focus:bg-black/60 transition-all placeholder:text-gray-700" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Escreva observações sobre este cliente..." />
+          </div>
+      </div>
+  </div>
+)
+
+const ChatTab = ({ client }: any) => {
+  const [contacts, setContacts] = useState<any[]>([])
+  const [selectedPhone, setSelectedPhone] = useState<string | null>(null)
+  const [messages, setMessages] = useState<any[]>([])
+  const [inputText, setInputText] = useState('')
+  const [sending, setSending] = useState(false)
+  const [loadingContacts, setLoadingContacts] = useState(true)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    fetchContacts()
+    const interval = setInterval(fetchContacts, 10000)
+    return () => clearInterval(interval)
+  }, [client.id])
+
+  useEffect(() => {
+    if (selectedPhone) {
+      fetchMessages(selectedPhone)
+      const interval = setInterval(() => fetchMessages(selectedPhone), 3000)
+      return () => clearInterval(interval)
+    }
+  }, [selectedPhone])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
+
+  async function fetchContacts() {
+    const { data } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('organization_id', client.id)
+      .order('created_at', { ascending: false })
+
+    if (data) {
+      const uniqueMap = new Map()
+      data.forEach((msg: any) => {
+        if (!uniqueMap.has(msg.phone)) {
+          uniqueMap.set(msg.phone, {
+            phone: msg.phone,
+            lastMessage: msg.content,
+            date: new Date(msg.created_at),
+            name: msg.sender_name || 'Desconhecido'
+          })
+        }
+      })
+      setContacts(Array.from(uniqueMap.values()))
+    }
+    setLoadingContacts(false)
+  }
+
+  async function fetchMessages(phone: string) {
+    const { data } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('organization_id', client.id)
+      .eq('phone', phone)
+      .order('created_at', { ascending: true })
+    
+    if (data) setMessages(data)
+  }
+
+  async function handleSendMessage(e: React.FormEvent) {
+    e.preventDefault()
+    if (!inputText.trim() || !selectedPhone) return
+
+    setSending(true)
+    const tempText = inputText
+    setInputText('') 
+
+    try {
+      const res = await fetch('/api/chat/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId: client.id,
+          phone: selectedPhone,
+          text: tempText
+        })
+      })
+      
+      if (!res.ok) throw new Error('Falha no envio')
+      await fetchMessages(selectedPhone)
+      
+    } catch (error) {
+      alert('Erro ao enviar mensagem')
+      setInputText(tempText)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="flex h-[600px] bg-[#0a0a0a] border border-white/10 rounded-2xl overflow-hidden shadow-2xl animate-in fade-in slide-in-from-bottom-4">
+      <div className="w-1/3 border-r border-white/10 flex flex-col bg-[#050505]">
+        <div className="p-4 border-b border-white/10 bg-[#0a0a0a]">
+          <h3 className="font-bold text-white mb-3 flex items-center gap-2">
+            <MessageSquare size={18} className="text-blue-500"/> Conversas
+          </h3>
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 text-gray-500" size={14} />
+            <input type="text" placeholder="Buscar número..." className="w-full bg-[#111] border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:border-blue-500 outline-none" />
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+          {loadingContacts ? (
+            <div className="flex justify-center p-8"><Loader2 className="animate-spin text-blue-500"/></div>
+          ) : contacts.length === 0 ? (
+            <div className="text-center p-8 text-gray-500 text-sm">Nenhuma conversa iniciada.</div>
+          ) : (
+            contacts.map(contact => (
+              <div key={contact.phone} onClick={() => setSelectedPhone(contact.phone)} className={`p-4 border-b border-white/5 cursor-pointer hover:bg-white/5 transition-colors ${selectedPhone === contact.phone ? 'bg-blue-900/20 border-l-2 border-l-blue-500' : ''}`}>
+                <div className="flex justify-between mb-1">
+                  <span className="font-bold text-gray-200 text-sm">{contact.name !== 'Cliente' ? contact.name : contact.phone}</span>
+                  <span className="text-[10px] text-gray-500">{contact.date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                </div>
+                <p className="text-xs text-gray-400 truncate max-w-[200px]">{contact.lastMessage}</p>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+      <div className="flex-1 flex flex-col bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-opacity-5">
+        {selectedPhone ? (
+          <>
+            <div className="p-4 bg-[#0a0a0a]/90 backdrop-blur border-b border-white/10 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center"><User size={20} className="text-white"/></div>
+                <div><h3 className="font-bold text-white">{selectedPhone}</h3><span className="text-xs text-green-400 flex items-center gap-1">● Online via WhatsApp</span></div>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+              {messages.map((msg) => {
+                const isUser = msg.role === 'user'
+                return (
+                  <div key={msg.id} className={`flex ${isUser ? 'justify-start' : 'justify-end'}`}>
+                    <div className={`max-w-[70%] rounded-2xl p-3 text-sm shadow-md relative ${isUser ? 'bg-[#202c33] text-white rounded-tl-none' : 'bg-[#005c4b] text-white rounded-tr-none'}`}>
+                      {!isUser && <div className="text-[10px] text-green-200 font-bold mb-1 flex items-center gap-1">{msg.sender_name === 'Atendente Humano' ? <User size={10}/> : <Bot size={10}/>} {msg.sender_name === 'Atendente Humano' ? 'Você' : 'Bot AI'}</div>}
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                      <span className="text-[10px] text-gray-400 block text-right mt-1 opacity-70">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    </div>
+                  </div>
+                )
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+            <form onSubmit={handleSendMessage} className="p-4 bg-[#0a0a0a] border-t border-white/10 flex gap-2">
+              <input type="text" placeholder="Digite sua mensagem..." className="flex-1 bg-[#18181b] border border-white/10 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none transition-colors" value={inputText} onChange={(e) => setInputText(e.target.value)} />
+              <button type="submit" disabled={sending || !inputText.trim()} className="bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">{sending ? <Loader2 className="animate-spin"/> : <Send size={20} />}</button>
+            </form>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-500 opacity-50"><Phone size={64} className="mb-4 text-gray-700"/><p>Selecione um contato para iniciar o atendimento</p></div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb, isSyncingSchedule, handleSaveBotConfig, isSavingBot, isEditing, setIsEditing, editForm, setEditForm, handleUpdateClient, botCapabilities, filteredTemplates }: any) => {
+  // Estados do QR Code
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [qrStatus, setQrStatus] = useState<'idle' | 'loading' | 'qrcode' | 'connected' | 'error'>('idle');
+  const [qrError, setQrError] = useState<string | null>(null);
+  const retryTimer = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (retryTimer.current) clearTimeout(retryTimer.current)
+    }
+  }, [])
+
+  // Função para requisitar QR Code
+  const handleRequestQr = async () => {
+    if (!botConfig.phoneId) {
+        alert("Defina um Nome da Instância (ID) e salve antes de conectar.");
+        return;
+    }
+
+    setQrStatus('loading');
+    setQrCode(null);
+    setQrError(null);
+
+    try {
+        const res = await fetch('/api/bot/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ instanceName: botConfig.phoneId })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.error || 'Erro ao gerar QR');
+        }
+
+        if (data.status === 'connected') {
+             setQrStatus('connected');
+             return;
+        }
+
+        if (data.qrcode) {
+            setQrCode(data.qrcode);
+            setQrStatus('qrcode');
+
+            if (retryTimer.current) clearTimeout(retryTimer.current);
+            retryTimer.current = setTimeout(() => {
+                handleRequestQr();
+            }, 25000);
+        } else {
+             throw new Error('QR não retornado pela API');
+        }
+
+    } catch (err: any) {
+        setQrError(err.message);
+        setQrStatus('error');
+    }
+  };
+
+  return (
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
+          <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+              <div><h3 className="font-bold text-lg flex items-center gap-2 text-white"><Bot className="text-purple-500" size={20}/> Bot Intelligence</h3><p className="text-xs text-gray-500 mt-1">Configuração da IA e conexão WhatsApp</p></div>
+              {role === 'super_admin' && (<button onClick={() => setBotConfig({...botConfig, isActive: !botConfig.isActive})} className={`relative w-11 h-6 rounded-full transition-all duration-300 ${botConfig.isActive ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-gray-700'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 shadow-sm ${botConfig.isActive ? 'left-6' : 'left-1'}`}></div></button>)}
+          </div>
+          <div className="p-6 space-y-6">
+              <div className="space-y-4">
+                  {role === 'super_admin' ? (
+                      <>
+                          <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Plano</label><select className="w-full bg-[#050505] border border-white/10 rounded-lg p-2.5 text-white text-sm focus:border-purple-500 outline-none" value={botConfig.planLevel} onChange={e => setBotConfig({...botConfig, planLevel: e.target.value})}><option value="ZyStart">ZyStart</option><option value="ZyControl">ZyControl</option><option value="ZyBotAI">ZyBotAI</option><option value="ZyCore">ZyCore</option></select></div>
+                              <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Template</label><select className="w-full bg-[#050505] border border-white/10 rounded-lg p-2.5 text-white text-sm focus:border-purple-500 outline-none" value={botConfig.template} onChange={e => setBotConfig({...botConfig, template: e.target.value})}>{filteredTemplates.length > 0 ? filteredTemplates.map((t:any) => (<option key={t.id} value={t.id}>{t.label}</option>)) : (<option value="">Sem template</option>)}</select></div>
+                          </div>
+                          <div className="space-y-1"><label className="text-[10px] font-bold text-yellow-500 uppercase flex items-center gap-1"><Sparkles size={10}/> Prompt Mestre (Admin)</label><textarea className="w-full bg-[#050505] border border-yellow-500/20 rounded-lg p-3 text-gray-300 text-sm focus:border-yellow-500/50 font-mono" rows={3} value={botConfig.aiPersona} onChange={e => setBotConfig({...botConfig, aiPersona: e.target.value})} /></div>
+                          <div className="space-y-1"><div className="flex justify-between"><label className="text-[10px] font-bold text-blue-400 uppercase">Contexto: Horários</label><button onClick={syncScheduleFromDb} disabled={isSyncingSchedule} className="text-[10px] text-gray-500 hover:text-white flex items-center gap-1">{isSyncingSchedule ? <RefreshCcw size={10} className="animate-spin"/> : 'Sincronizar'}</button></div><input type="text" className="w-full bg-[#050505] border border-blue-500/20 rounded-lg p-2.5 text-gray-300 text-sm focus:border-blue-500/50" value={botConfig.openingHours} onChange={e => setBotConfig({...botConfig, openingHours: e.target.value})} /></div>
+                          
+                          {/* CONEXÃO WHATSAPP - LÓGICA QR CODE */}
+                          <div className="pt-4 border-t border-white/5 space-y-4 bg-white/[0.02] p-4 rounded-xl border border-white/5">
+                              <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-green-500 uppercase flex items-center gap-1"><Smartphone size={12}/> Nome da Instância (ID)</label>
+                                  <input placeholder="Ex: imobiliaria_clientzy_01" className="w-full bg-[#050505] border border-white/10 rounded-lg p-2 text-xs font-mono text-gray-400 focus:border-green-500 outline-none" value={botConfig.phoneId} onChange={e => setBotConfig({...botConfig, phoneId: e.target.value})} />
+                                  <p className="text-[9px] text-gray-500">Defina um ID único para criar a conexão no servidor.</p>
+                              </div>
+                              
+                              {/* PAINEL DE QR CODE */}
+                              <div className="pt-2 flex flex-col items-center">
+                                  {qrStatus === 'connected' ? (
+                                      <div className="w-full p-4 bg-green-500/20 border border-green-500/30 rounded-xl text-center text-green-400 font-bold text-sm flex items-center justify-center gap-2 animate-in zoom-in">
+                                          <CheckCircle size={18}/> WhatsApp Conectado e Operante!
+                                      </div>
+                                  ) : qrStatus === 'loading' ? (
+                                      <div className="w-full py-6 text-center text-gray-400 animate-pulse flex flex-col items-center">
+                                          <Loader2 size={24} className="animate-spin mb-2 text-green-500"/>
+                                          <span className="text-xs">Gerando QR Code... Aguarde o servidor.</span>
+                                      </div>
+                                  ) : qrStatus === 'qrcode' && qrCode ? (
+                                      <div className="text-center space-y-3 animate-in zoom-in duration-300">
+                                          <p className="text-xs text-white font-bold">Escaneie com o WhatsApp:</p>
+                                          <div className="bg-white p-2 rounded-lg inline-block">
+                                              <img src={`data:image/png;base64,${qrCode}`} alt="QR Code WhatsApp" className="w-48 h-48 object-contain" />
+                                          </div>
+                                          <p className="text-[10px] text-gray-500 flex items-center justify-center gap-1">
+                                            <RefreshCcw size={10} className="animate-spin"/> Atualiza a cada 25s
+                                          </p>
+                                      </div>
+                                  ) : (
+                                      <div className="w-full">
+                                          {qrStatus === 'error' && (
+                                              <div className="mb-3 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 text-center">
+                                                  {qrError} <br/> <span className="underline cursor-pointer" onClick={handleRequestQr}>Tentar novamente</span>
+                                              </div>
+                                          )}
+                                          <button 
+                                            type="button"
+                                            onClick={handleRequestQr}
+                                            disabled={!botConfig.phoneId}
+                                            className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-green-900/20 disabled:opacity-50"
+                                          >
+                                              <QrCode size={16}/> Gerar QR Code de Conexão
+                                          </button>
+                                      </div>
+                                  )}
+                              </div>
+                              
+                              <div className="hidden">
+                                  <input type="password" value={botConfig.accessToken} onChange={e => setBotConfig({...botConfig, accessToken: e.target.value})} />
+                              </div>
+                          </div>
+                      </>
+                  ) : <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-sm text-green-400 flex items-center gap-2"><CheckCircle size={16}/> Configuração gerenciada pela Zytech.</div>}
+                  
+                  <div className="space-y-1 mt-4"><label className="text-[10px] font-bold text-cyan-500 uppercase flex items-center gap-1"><HelpCircle size={10}/> Perguntas Frequentes (FAQ)</label><textarea className="w-full bg-[#050505] border border-cyan-500/20 rounded-lg p-3 text-gray-300 text-sm focus:border-cyan-500/50 font-mono" rows={3} placeholder="Ex: Aceitamos fiador? Sim." value={botConfig.aiFaq} onChange={e => setBotConfig({...botConfig, aiFaq: e.target.value})} /></div>
+                  <button onClick={handleSaveBotConfig} disabled={isSavingBot} className="w-full bg-white/5 hover:bg-white/10 text-white border border-white/10 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all">{isSavingBot ? 'Salvando...' : <><Save size={16}/> Salvar Configuração</>}</button>
+              </div>
+          </div>
+      </div>
+      
+      {/* CARD DIREITO (CONTRATO) */}
+      <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl h-fit">
+          <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+              <div><h3 className="font-bold text-lg flex items-center gap-2 text-white"><Briefcase size={20} className="text-blue-500"/> Contrato</h3><p className="text-xs text-gray-500 mt-1">Detalhes de faturamento e plano.</p></div>
+              {role === 'super_admin' && <button onClick={() => setIsEditing(!isEditing)} className="text-blue-400 text-xs font-bold hover:text-blue-300 uppercase tracking-wider border border-blue-500/30 px-3 py-1 rounded-lg hover:bg-blue-500/10 transition-all">{isEditing ? 'Cancelar Edição' : 'Editar Dados'}</button>}
+          </div>
+          <form onSubmit={handleUpdateClient} className="p-6 space-y-5">
+              <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Nome da Empresa</label><input type="text" disabled={!isEditing} className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-white text-sm disabled:opacity-50 focus:border-blue-500 outline-none" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})}/></div>
+              <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Plano</label><select disabled={!isEditing} className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-white text-sm disabled:opacity-50 outline-none" value={editForm.plan} onChange={e => { setEditForm({...editForm, plan: e.target.value}); setBotConfig((prev:any) => ({...prev, planLevel: e.target.value})) }}><option value="ZyStart">ZyStart</option><option value="ZyControl">ZyControl</option><option value="ZyBotAI">ZyBotAI</option><option value="ZyCore">ZyCore</option></select></div>
+                  <div className="space-y-1"><label className="text-[10px] font-bold text-green-500 uppercase">Valor (R$)</label><input type="text" disabled={!isEditing} className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-white text-sm disabled:opacity-50 focus:border-green-500 outline-none font-mono" value={editForm.value} onChange={e => setEditForm({...editForm, value: e.target.value})}/></div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Ciclo</label><select disabled={!isEditing} className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-white text-sm disabled:opacity-50 outline-none" value={editForm.cycle} onChange={e => setEditForm({...editForm, cycle: e.target.value})}><option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option><option value="unico">Único</option></select></div>
+                  <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Vencimento</label><input type="date" disabled={!isEditing} className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-white text-sm disabled:opacity-50 outline-none text-gray-400" value={editForm.valid_until} onChange={e => setEditForm({...editForm, valid_until: e.target.value})}/></div>
+              </div>
+              {role === 'super_admin' && isEditing && <div className="pt-4 flex justify-end"><button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-[0_0_20px_rgba(37,99,235,0.3)] transition-all"><Save size={18}/> Salvar Alterações</button></div>}
+          </form>
+      </div>
+  </div>
+  )
+}
+
+const NotificationsTab = ({ notifications, markAsRead, loadingNotifications, fetchNotifications }: any) => (
+  <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4">
+      <div className="flex justify-between items-center mb-6">
+          <div>
+            <h3 className="text-2xl font-bold text-white flex items-center gap-2"><Bell className="text-red-500" /> Central de Alertas</h3>
+            <p className="text-sm text-gray-400 mt-1">Solicitações de atendimento humano e avisos importantes.</p>
+          </div>
+          <button onClick={fetchNotifications} className="p-2 bg-white/5 rounded-lg hover:bg-white/10"><RefreshCcw size={16}/></button>
+      </div>
+      
+      <div className="space-y-3">
+          {loadingNotifications ? (
+              <div className="p-10 text-center text-gray-500">Carregando notificações...</div>
+          ) : notifications.length === 0 ? (
+              <div className="p-10 text-center border border-dashed border-white/10 rounded-2xl bg-white/[0.01]">
+                  <CheckCircle size={32} className="mx-auto text-green-500 mb-2 opacity-50"/>
+                  <p className="text-gray-400">Tudo limpo! Nenhuma pendência.</p>
+              </div>
+          ) : (
+              notifications.map((notif:any) => (
+                  <div key={notif.id} className={`p-4 rounded-xl border flex gap-4 transition-all ${notif.is_read ? 'bg-[#0a0a0a] border-white/5 opacity-60' : 'bg-red-900/10 border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.1)]'}`}>
+                      <div className={`mt-1 p-2 rounded-full h-fit ${notif.is_read ? 'bg-gray-800 text-gray-500' : 'bg-red-500 text-white'}`}>
+                          {notif.type === 'human_request' ? <UserPlus size={16}/> : <Bell size={16}/>}
+                      </div>
+                      <div className="flex-1">
+                          <div className="flex justify-between items-start">
+                              <h4 className={`font-bold text-sm ${notif.is_read ? 'text-gray-400' : 'text-white'}`}>{notif.customer_name || notif.customer_phone}</h4>
+                              <span className="text-[10px] text-gray-500 font-mono">{new Date(notif.created_at).toLocaleString('pt-BR')}</span>
+                          </div>
+                          <p className="text-sm text-gray-300 mt-1">{notif.content}</p>
+                          <div className="flex gap-4 mt-3">
+                              <a href={`https://wa.me/${notif.customer_phone}`} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-green-400 hover:underline flex items-center gap-1"><Phone size={12}/> Chamar no WhatsApp</a>
+                              {!notif.is_read && <button onClick={() => markAsRead(notif.id)} className="text-xs font-bold text-gray-500 hover:text-white flex items-center gap-1"><CheckCircle size={12}/> Marcar como resolvido</button>}
+                          </div>
+                      </div>
+                  </div>
+              ))
+          )}
+      </div>
+  </div>
+)
+
+const CatalogTab = ({ client, isRealEstate, isServiceType, products, setIsProductModalOpen, labels, toggleProductStatus, handleDeleteProduct }: any) => (
+  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex justify-between items-end">
+          <div>
+              <h2 className="text-2xl font-bold flex items-center gap-2 text-white">
+                  {isRealEstate ? <Home className="text-indigo-500"/> : isServiceType ? <Scissors className="text-purple-500"/> : <Package className="text-blue-500"/>} 
+                  {isRealEstate ? 'Carteira de Imóveis' : 'Itens do Bot'}
+              </h2>
+              <p className="text-gray-400 text-sm mt-1">{isRealEstate ? 'Gerencie os imóveis disponíveis para venda ou aluguel.' : 'Gerencie os produtos/serviços que o bot oferece.'}</p>
+          </div>
+          <button onClick={() => setIsProductModalOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-[0_0_15px_rgba(37,99,235,0.3)] transition-all">
+              <Plus size={18}/> {labels.add}
+          </button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {products.length === 0 && <div className="col-span-full py-16 text-center border border-dashed border-white/10 rounded-2xl bg-white/[0.01]"><p className="text-gray-500">Nenhum {isRealEstate ? 'imóvel' : 'item'} cadastrado.</p></div>}
+          {products.map((prod:any) => (
+              <div key={prod.id} className={`group bg-[#0a0a0a]/50 backdrop-blur-sm border rounded-2xl p-5 flex justify-between transition-all hover:border-blue-500/30 hover:bg-white/[0.03] ${prod.is_available ? 'border-white/10' : 'border-red-900/20 opacity-60'}`}>
+                  <div>
+                      <div className="flex items-center gap-2 mb-2">
+                          <span className="text-[10px] font-bold uppercase bg-white/10 px-2 py-0.5 rounded text-gray-300 border border-white/5">{prod.category}</span>
+                          {!isRealEstate && prod.track_stock && <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${prod.stock_quantity > 0 ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>{prod.stock_quantity} un.</span>}
+                      </div>
+                      <h4 className="font-bold text-white text-lg">{prod.name}</h4>
+                      {isRealEstate ? (
+                          <div className="mt-2 space-y-1">
+                              <p className="text-gray-400 text-xs flex items-center gap-1"><MapPin size={12}/> {prod.neighborhood || 'Bairro não inf.'}</p>
+                              <p className="text-green-400 font-mono font-bold">R$ {prod.price}</p>
+                          </div>
+                      ) : <p className="text-green-400 font-mono mt-1">R$ {prod.price}</p>}
+                  </div>
+                  <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => toggleProductStatus(prod)} className={`p-2 rounded-lg transition-colors ${prod.is_available ? 'text-green-500 hover:bg-green-500/10' : 'text-gray-500 hover:bg-gray-500/10'}`} title={prod.is_available ? "Ativo" : "Inativo"}><Power size={18}/></button>
+                      <button onClick={() => handleDeleteProduct(prod.id)} className="p-2 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                  </div>
+              </div>
+          ))}
+      </div>
+  </div>
+)
+
+const AppointmentsTab = ({ client, loadingAppts, apptFilter, setApptFilter, appointmentsList, isRealEstate, router }: any) => (
+  <div className="animate-in fade-in slide-in-from-bottom-2 space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <h3 className="text-xl font-bold flex items-center gap-2 text-white"><Calendar className="text-purple-500" /> Agendamentos</h3>
+          <button onClick={() => router.push(`/dashboard/appointments?orgId=${client.id}`)} className="bg-purple-600 hover:bg-purple-500 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 transition-all shadow-lg shadow-purple-900/20"><ExternalLink size={18} /> Gerenciar Agenda Completa</button>
+      </div>
+      {client.plan.includes('ZyStart') && (<div className="p-4 bg-blue-900/10 border border-blue-500/20 rounded-lg flex items-center gap-3 text-sm text-blue-300"><MessageCircle size={18} /><span>No plano ZyStart, os agendamentos são recebidos exclusivamente via WhatsApp e sincronizados aqui.</span></div>)}
+      <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-2xl">
+          <div className="p-4 border-b border-white/5 flex flex-wrap gap-2 bg-white/[0.02]">
+              <span className="flex items-center text-gray-500 text-sm font-bold mr-2"><Filter size={14} className="mr-1"/> Filtros:</span>
+              {[{ id: 'today', label: 'Hoje' }, { id: 'week', label: 'Esta Semana' }, { id: 'month', label: 'Este Mês' }, { id: 'year', label: 'Este Ano' }, { id: 'all', label: 'Histórico Completo' }].map(f => (
+                  <button key={f.id} onClick={() => setApptFilter(f.id)} className={`px-3 py-1 rounded text-xs font-bold transition-colors ${apptFilter === f.id ? 'bg-purple-600 text-white' : 'bg-white/5 text-gray-400 hover:text-white'}`}>{f.label}</button>
+              ))}
+          </div>
+          {loadingAppts ? (
+              <div className="p-10 text-center text-gray-500 italic animate-pulse">Carregando agendamentos...</div>
+          ) : (
+              <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                      <thead className="bg-white/5 text-gray-400 border-b border-white/5 uppercase text-xs">
+                          <tr>
+                              <th className="p-4"><Clock size={14} className="inline mr-1"/> Data/Hora</th>
+                              <th className="p-4"><User size={14} className="inline mr-1"/> Cliente</th>
+                              {isRealEstate ? (
+                                  <>
+                                      <th className="p-4"><Home size={14} className="inline mr-1"/> Imóvel</th>
+                                      <th className="p-4"><MapPin size={14} className="inline mr-1"/> Bairro</th>
+                                      <th className="p-4"><LinkIcon size={14} className="inline mr-1"/> Link</th>
+                                  </>
+                              ) : (
+                                  <th className="p-4"><Scissors size={14} className="inline mr-1"/> Serviço</th>
+                              )}
+                              <th className="p-4">Status</th>
+                          </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                          {appointmentsList.length > 0 ? appointmentsList.map((appt:any) => (
+                              <tr key={appt.id} className="hover:bg-white/[0.03] transition-colors">
+                                  <td className="p-4 font-mono text-gray-300">{new Date(appt.appointment_date).toLocaleDateString('pt-BR')} <span className="text-gray-500">às</span> {new Date(appt.appointment_date).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</td>
+                                  <td className="p-4">
+                                      <div className="font-bold text-white">{appt.client_name || appt.customer_phone || 'Cliente sem nome'}</div>
+                                      <div className="text-xs text-gray-500">{appt.customer_phone}</div>
+                                  </td>
+                                  {isRealEstate ? (
+                                      <>
+                                          <td className="p-4 text-gray-300">{appt.products?.name || appt.service_name || '-'}</td>
+                                          <td className="p-4 text-gray-400 text-xs">{appt.products?.neighborhood || '-'}</td>
+                                          <td className="p-4">
+                                              {appt.products?.property_link ? (
+                                                  <a href={appt.products.property_link} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline text-xs">Ver Imóvel</a>
+                                              ) : <span className="text-gray-600 text-xs">-</span>}
+                                          </td>
+                                      </>
+                                  ) : (
+                                      <td className="p-4 text-gray-300">{appt.service_name || '-'}</td>
+                                  )}
+                                  <td className="p-4"><span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${appt.status === 'confirmed' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : appt.status === 'canceled' ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'}`}>{appt.status === 'confirmed' ? 'Confirmado' : appt.status === 'canceled' ? 'Cancelado' : 'Pendente'}</span></td>
+                              </tr>
+                          )) : (<tr><td colSpan={isRealEstate ? 6 : 4} className="p-8 text-center text-gray-500">Nenhum agendamento encontrado para este período.</td></tr>)}
+                      </tbody>
+                  </table>
+              </div>
+          )}
+      </div>
+  </div>
+)
+
+const OrdersTab = ({ isServiceType, fetchClientOrders, clientOrders, handleAdvanceStatus, handleCancelOrder, client }: any) => {
+    const getStatusStyle = (status: string) => {
+      switch(status) {
+        case 'pending': return { color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20', shadow: 'shadow-yellow-500/10', label: 'Pendente', icon: Clock }
+        case 'preparing': return { color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', shadow: 'shadow-blue-500/10', label: 'Preparando', icon: ChefHat }
+        case 'delivery': return { color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20', shadow: 'shadow-purple-500/10', label: 'Em Rota', icon: Truck }
+        case 'finished': return { color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/20', shadow: 'shadow-green-500/10', label: 'Entregue', icon: CheckCircle }
+        case 'canceled': return { color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20', shadow: 'shadow-red-500/10', label: 'Cancelado', icon: XCircle }
+        default: return { color: 'text-gray-400', bg: 'bg-gray-500/10', border: 'border-gray-500/20', shadow: 'shadow-none', label: status, icon: Package }
+      }
+    }
+
+    return (
+        <div className="animate-in fade-in slide-in-from-bottom-2 space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-end">
+                <div>
+                    <h3 className="text-xl font-bold mb-1 flex items-center gap-2 text-white">
+                        {isServiceType ? <Scissors className="text-purple-500"/> : <ShoppingCart className="text-blue-500"/>} 
+                        {isServiceType ? ' Serviços Realizados' : ' Gestão de Pedidos'}
+                    </h3>
+                    <p className="text-gray-400 text-sm">Acompanhe o status e gerencie entregas.</p>
+                </div>
+                <button onClick={fetchClientOrders} className="bg-white/5 border border-white/10 hover:bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all">
+                    <RefreshCcw size={16}/> Atualizar
+                </button>
+            </div>
+
+            {clientOrders.length === 0 ? (
+                <div className="col-span-full py-16 text-center border border-dashed border-white/10 rounded-2xl bg-white/[0.01]">
+                    <Package size={48} className="mx-auto text-gray-600 mb-4"/>
+                    <p className="text-gray-500">Nenhum pedido registrado ainda.</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {clientOrders.map((order:any) => {
+                        const statusStyle = getStatusStyle(order.status)
+                        const StatusIcon = statusStyle.icon
+                        return (
+                            <div key={order.id} className={`bg-[#0a0a0a]/60 backdrop-blur-md border rounded-2xl overflow-hidden transition-all duration-300 group hover:-translate-y-1 shadow-xl ${order.status === 'canceled' ? 'border-red-900/20 opacity-60 grayscale-[0.5]' : 'border-white/10 hover:border-blue-500/30'}`}>
+                                <div className="p-5 border-b border-white/5 flex justify-between items-start bg-white/[0.02]">
+                                    <div>
+                                        <h3 className="font-bold text-white text-lg truncate w-40 tracking-tight" title={order.customer_name}>{order.customer_name}</h3>
+                                        <p className="text-xs text-gray-400 flex items-center gap-1.5 mt-1 font-mono"><Clock size={12} className="text-blue-500"/> {new Date(order.created_at).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</p>
+                                    </div>
+                                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase border flex items-center gap-1.5 shadow-lg ${statusStyle.bg} ${statusStyle.color} ${statusStyle.border} ${statusStyle.shadow}`}><StatusIcon size={12} /> {statusStyle.label}</span>
+                                </div>
+                                <div className="p-5 min-h-[100px] bg-gradient-to-b from-transparent to-black/20">
+                                    <ul className="space-y-2 text-sm">
+                                        {Array.isArray(order.items_json) && order.items_json.map((item: any, idx: number) => (
+                                            <li key={idx} className="flex justify-between items-start text-gray-300">
+                                                <div className="flex gap-2"><span className="bg-white/10 text-white font-bold font-mono px-1.5 rounded text-xs h-fit min-w-[24px] text-center border border-white/5">{item.qty || 1}x</span><span className="leading-snug text-xs text-gray-200">{item.name}</span></div>
+                                                <span className="text-gray-500 text-xs font-mono mt-0.5">R$ {Number(item.price).toFixed(2)}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                <div className="p-5 border-t border-white/5 bg-[#050505] space-y-4">
+                                    <div className="space-y-2">
+                                        <div className="flex items-start gap-3 text-xs text-gray-400"><div className="p-1.5 bg-blue-500/10 rounded-md shrink-0"><MapPin size={12} className="text-blue-400"/></div><span className="line-clamp-2 leading-relaxed">{order.delivery_address || 'Retirada / Local'}</span></div>
+                                        <div className="flex items-center gap-3 text-xs text-gray-400"><div className="p-1.5 bg-green-500/10 rounded-md shrink-0"><Phone size={12} className="text-green-400"/></div><span className="font-mono tracking-wide">{order.customer_phone}</span></div>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-3 border-t border-white/5"><span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Total</span><span className="text-lg font-bold text-white tracking-tight text-green-400">R$ {Number(order.total_value).toFixed(2)}</span></div>
+                                    {client.business_type === 'delivery' && order.status !== 'canceled' && order.status !== 'finished' && (
+                                        <div className="grid grid-cols-2 gap-3 pt-2">
+                                            <button onClick={() => handleAdvanceStatus(order)} className="py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-900/20 hover:shadow-blue-900/40 flex items-center justify-center gap-2 group/btn">Avançar <ArrowRight size={12} className="group-hover/btn:translate-x-0.5 transition-transform"/></button>
+                                            <button onClick={() => handleCancelOrder(order.id)} className="py-2.5 bg-white/5 hover:bg-red-500/10 text-gray-400 hover:text-red-400 border border-white/10 hover:border-red-500/20 rounded-xl text-xs font-bold transition-all">Cancelar</button>
+                                        </div>
+                                    )}
+                                    {order.status === 'canceled' && <div className="pt-2 text-center text-[10px] font-bold text-red-400 bg-red-500/5 border border-red-500/10 rounded-lg py-2 uppercase tracking-wider">Pedido Cancelado</div>}
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
+        </div>
+    )
 }
