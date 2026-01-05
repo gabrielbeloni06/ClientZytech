@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-// Limpeza de variáveis (trim) para evitar erros de espaço em branco
-const EVO_URL_RAW = process.env.EVOLUTION_API_URL || "";
+const EVO_URL = process.env.EVOLUTION_API_URL!;
 // Garante que não tenha barra no final
-const BASE_URL = EVO_URL_RAW.trim().replace(/\/$/, "");
+const BASE_URL = EVO_URL?.trim().replace(/\/$/, "");
 const EVO_KEY = process.env.EVOLUTION_API_KEY?.trim() || "";
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -14,17 +13,19 @@ export async function POST(req: NextRequest) {
   try {
     const { instanceName } = await req.json();
 
+    // Debug da Chave (Mostra os 3 primeiros digitos para conferência no log)
+    const keyHint = EVO_KEY ? `${EVO_KEY.substring(0, 3)}...` : "VAZIA";
+    console.log(`>>> [AUTH DEBUG] Vercel Key começa com: ${keyHint}`);
+
     if (!BASE_URL || !EVO_KEY) {
-        return NextResponse.json({ error: "Configuração da API ausente na Vercel" }, { status: 500 });
+        return NextResponse.json({ error: "Configuração da API incompleta na Vercel." }, { status: 500 });
     }
 
-    if (!instanceName) return NextResponse.json({ error: "Nome da instância obrigatório" }, { status: 400 });
+    if (!instanceName) return NextResponse.json({ error: "Nome obrigatório" }, { status: 400 });
 
-    console.log(`>>> [CONEXÃO] Iniciando para: ${instanceName}`);
-    console.log(`>>> [DEBUG] URL: ${BASE_URL} | Key: ${EVO_KEY.substring(0, 3)}***`);
+    console.log(`>>> [CONEXÃO] Processando: ${instanceName}`);
 
-    // 1. TENTATIVA DE CRIAÇÃO (Idempotente)
-    // Não deletamos antes para ganhar tempo. Se já existe, a API avisa.
+    // 1. TENTATIVA DE CRIAÇÃO
     const createUrl = `${BASE_URL}/instance/create`;
     const createPayload = {
       instanceName: instanceName,
@@ -40,30 +41,28 @@ export async function POST(req: NextRequest) {
             method: "POST",
             headers: { 
                 "Content-Type": "application/json", 
-                "apikey": EVO_KEY 
+                "apikey": EVO_KEY // A Evolution v2 usa 'apikey' no header
             },
             body: JSON.stringify(createPayload)
         });
         
-        // Se der 401 aqui, a senha está errada
         if (createRes.status === 401 || createRes.status === 403) {
-            console.error(">>> [AUTH ERROR] VPS rejeitou a senha.");
-            return NextResponse.json({ error: "Senha da API incorreta. Verifique a Vercel." }, { status: 401 });
+            console.error(`>>> [AUTH FAIL] A VPS recusou a chave: ${keyHint}`);
+            return NextResponse.json({ 
+                error: `Erro de Autenticação. A Vercel enviou a chave iniciada em '${keyHint}', mas a VPS recusou. Tente rodar 'docker compose down -v' na VPS.` 
+            }, { status: 401 });
         }
-
+        
         if (createRes.ok) {
             console.log(">>> [CREATED] Nova instância iniciada.");
-            await delay(2000); // Tempo para o banco alocar
+            await delay(2000); 
         }
     } catch (e) {
-        console.error(">>> [CREATE FAIL]", e);
-        return NextResponse.json({ error: "Falha ao conectar na VPS (Network Error)" }, { status: 502 });
+        console.error(">>> [NETWORK ERROR]", e);
+        return NextResponse.json({ error: "Erro de conexão com a VPS (Network Error)" }, { status: 502 });
     }
 
-    // 2. BUSCA DO QR CODE (Polling Rápido)
-    let qrCode = null;
-    
-    // Tenta 3 vezes
+    // 2. BUSCA DO QR CODE
     for (let i = 0; i < 3; i++) {
         try {
             const connectRes = await fetch(`${BASE_URL}/instance/connect/${instanceName}`, {
@@ -73,24 +72,20 @@ export async function POST(req: NextRequest) {
             if (connectRes.ok) {
                 const data = await connectRes.json();
                 
-                // Se já conectou
                 if (data?.instance?.state === 'open') {
                     return NextResponse.json({ status: "connected", message: "Conectado!" });
                 }
 
-                // Se vier count:0, o Chrome está subindo. Aguarda.
                 if (data.count === 0) {
                     console.log(">>> [WAIT] VPS Booting...");
-                } 
-                else {
-                    // Tenta encontrar o QR Code
+                } else {
                     const qr = data?.base64 || data?.qrcode?.base64 || data?.qrcode;
-                    
                     if (qr && typeof qr === 'string' && qr.length > 50) {
-                        qrCode = qr;
-                        break; // Achou!
+                        return NextResponse.json({ status: "qrcode", qrcode: qr });
                     }
                 }
+            } else if (connectRes.status === 401) {
+                 return NextResponse.json({ error: "Senha rejeitada na busca do QR." }, { status: 401 });
             }
         } catch (e) {
             console.log(">>> [RETRY QR]", e);
@@ -98,11 +93,6 @@ export async function POST(req: NextRequest) {
         await delay(1500);
     }
 
-    if (qrCode) {
-        return NextResponse.json({ status: "qrcode", qrcode: qrCode });
-    }
-
-    // Se chegou aqui, é porque ainda está ligando (count:0)
     return NextResponse.json({ 
         status: "loading", 
         message: "Inicializando WhatsApp na VPS..." 
