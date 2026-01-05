@@ -1,12 +1,13 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { useRouter } from 'next/navigation'
 import { 
   TrendingUp, Power, FileText, Bot, Sparkles, RefreshCcw, Briefcase, Save, 
   Home, Scissors, Package, Plus, MapPin, Clock, CheckCircle, XCircle, Truck, 
   ChefHat, Phone, Calendar, ExternalLink, MessageCircle, Filter, User, Link as LinkIcon,
   ShoppingCart, List, X, Settings, Brain, Trash2, ArrowRight, HelpCircle, Bell, UserPlus,
-  MessageSquare, Search, Send, Loader2, QrCode, Smartphone
+  MessageSquare, Search, Send, Loader2, QrCode, Smartphone, ArrowUpRight
 } from 'lucide-react'
 
 // --- CHART COMPONENT ---
@@ -248,67 +249,17 @@ export const ChatTab = ({ client }: any) => {
   )
 }
 
-// --- SETTINGS TAB (COM LÓGICA QR CODE ORIGINAL) ---
-export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb, isSyncingSchedule, handleSaveBotConfig, isSavingBot, isEditing, setIsEditing, editForm, setEditForm, handleUpdateClient, botCapabilities, filteredTemplates }: any) => {
-  // Estados do QR Code
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [qrStatus, setQrStatus] = useState<'idle' | 'loading' | 'qrcode' | 'connected' | 'error'>('idle');
-  const [qrError, setQrError] = useState<string | null>(null);
-  const retryTimer = useRef<NodeJS.Timeout | null>(null);
-
-  // Limpa o timer ao desmontar
-  useEffect(() => {
-    return () => {
-      if (retryTimer.current) clearTimeout(retryTimer.current)
-    }
-  }, [])
-
-  // Função para requisitar QR Code (Lógica Original Restaurada)
-  const handleRequestQr = async () => {
+// --- SETTINGS TAB (REDIRECT) ---
+export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb, isSyncingSchedule, handleSaveBotConfig, isSavingBot, isEditing, setIsEditing, editForm, setEditForm, handleUpdateClient, botCapabilities, filteredTemplates, client }: any) => {
+  const router = useRouter(); 
+  
+  const handleOpenQrPage = () => {
     if (!botConfig.phoneId) {
         alert("Defina um Nome da Instância (ID) e salve antes de conectar.");
         return;
     }
-
-    setQrStatus('loading');
-    setQrCode(null);
-    setQrError(null);
-
-    try {
-        const res = await fetch('/api/bot/connect', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ instanceName: botConfig.phoneId })
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-            throw new Error(data.error || 'Erro ao gerar QR');
-        }
-
-        if (data.status === 'connected') {
-             setQrStatus('connected');
-             return;
-        }
-
-        if (data.qrcode) {
-            setQrCode(data.qrcode);
-            setQrStatus('qrcode');
-
-            // Auto-refresh a cada 25s pois o QR do WhatsApp expira
-            if (retryTimer.current) clearTimeout(retryTimer.current);
-            retryTimer.current = setTimeout(() => {
-                handleRequestQr();
-            }, 25000);
-        } else {
-             throw new Error('QR não retornado pela API');
-        }
-
-    } catch (err: any) {
-        setQrError(err.message);
-        setQrStatus('error');
-    }
+    // Redireciona para a página dedicada passando o nome da instância
+    router.push(`/dashboard/clients/${client.id}/code?instance=${botConfig.phoneId}`);
   };
 
   return (
@@ -329,7 +280,7 @@ export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb,
                           <div className="space-y-1"><label className="text-[10px] font-bold text-yellow-500 uppercase flex items-center gap-1"><Sparkles size={10}/> Prompt Mestre (Admin)</label><textarea className="w-full bg-[#050505] border border-yellow-500/20 rounded-lg p-3 text-gray-300 text-sm focus:border-yellow-500/50 font-mono" rows={3} value={botConfig.aiPersona} onChange={e => setBotConfig({...botConfig, aiPersona: e.target.value})} /></div>
                           <div className="space-y-1"><div className="flex justify-between"><label className="text-[10px] font-bold text-blue-400 uppercase">Contexto: Horários</label><button onClick={syncScheduleFromDb} disabled={isSyncingSchedule} className="text-[10px] text-gray-500 hover:text-white flex items-center gap-1">{isSyncingSchedule ? <RefreshCcw size={10} className="animate-spin"/> : 'Sincronizar'}</button></div><input type="text" className="w-full bg-[#050505] border border-blue-500/20 rounded-lg p-2.5 text-gray-300 text-sm focus:border-blue-500/50" value={botConfig.openingHours} onChange={e => setBotConfig({...botConfig, openingHours: e.target.value})} /></div>
                           
-                          {/* AREA DE CONEXÃO WHATSAPP (EVOLUTION) */}
+                          {/* BOTÃO DE REDIRECIONAMENTO */}
                           <div className="pt-4 border-t border-white/5 space-y-4 bg-white/[0.02] p-4 rounded-xl border border-white/5">
                               <div className="space-y-1">
                                   <label className="text-[10px] font-bold text-green-500 uppercase flex items-center gap-1"><Smartphone size={12}/> Nome da Instância (ID)</label>
@@ -337,44 +288,17 @@ export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb,
                                   <p className="text-[9px] text-gray-500">Este ID cria a conexão na VPS.</p>
                               </div>
                               
-                              {/* PAINEL DE QR CODE */}
-                              <div className="pt-2 flex flex-col items-center">
-                                  {qrStatus === 'connected' ? (
-                                      <div className="w-full p-4 bg-green-500/20 border border-green-500/30 rounded-xl text-center text-green-400 font-bold text-sm flex items-center justify-center gap-2 animate-in zoom-in">
-                                          <CheckCircle size={18}/> WhatsApp Conectado e Operante!
-                                      </div>
-                                  ) : qrStatus === 'loading' ? (
-                                      <div className="w-full py-6 text-center text-gray-400 animate-pulse flex flex-col items-center">
-                                          <Loader2 size={24} className="animate-spin mb-2 text-green-500"/>
-                                          <span className="text-xs">Gerando QR Code... Aguarde o servidor.</span>
-                                      </div>
-                                  ) : qrStatus === 'qrcode' && qrCode ? (
-                                      <div className="text-center space-y-3 animate-in zoom-in duration-300">
-                                          <p className="text-xs text-white font-bold">Escaneie com o WhatsApp:</p>
-                                          <div className="bg-white p-2 rounded-lg inline-block">
-                                              <img src={`data:image/png;base64,${qrCode}`} alt="QR Code WhatsApp" className="w-48 h-48 object-contain" />
-                                          </div>
-                                          <p className="text-[10px] text-gray-500 flex items-center justify-center gap-1">
-                                            <RefreshCcw size={10} className="animate-spin"/> Atualiza a cada 25s
-                                          </p>
-                                      </div>
-                                  ) : (
-                                      <div className="w-full">
-                                          {qrStatus === 'error' && (
-                                              <div className="mb-3 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 text-center">
-                                                  {qrError} <br/> <span className="underline cursor-pointer" onClick={handleRequestQr}>Tentar novamente</span>
-                                              </div>
-                                          )}
-                                          <button 
-                                            type="button"
-                                            onClick={handleRequestQr}
-                                            disabled={!botConfig.phoneId}
-                                            className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-green-900/20 disabled:opacity-50"
-                                          >
-                                              <QrCode size={16}/> Gerar QR Code de Conexão
-                                          </button>
-                                      </div>
-                                  )}
+                              <div className="pt-2">
+                                  <button 
+                                    type="button"
+                                    onClick={handleOpenQrPage}
+                                    disabled={!botConfig.phoneId}
+                                    className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-green-900/20 disabled:opacity-50"
+                                  >
+                                      <QrCode size={16}/> Abrir Conexão WhatsApp (QR Code)
+                                      <ArrowUpRight size={14} className="opacity-70" />
+                                  </button>
+                                  <p className="text-[9px] text-center text-gray-500 mt-2">Isso abrirá uma tela segura para leitura do código.</p>
                               </div>
                               
                               <div className="hidden">
@@ -390,7 +314,7 @@ export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb,
           </div>
       </div>
       
-      {/* CARD DIREITO (CONTRATO) MANTIDO IGUAL */}
+      {/* CARD DIREITO (CONTRATO) */}
       <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl h-fit">
           <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
               <div><h3 className="font-bold text-lg flex items-center gap-2 text-white"><Briefcase size={20} className="text-blue-500"/> Contrato</h3><p className="text-xs text-gray-500 mt-1">Detalhes de faturamento e plano.</p></div>

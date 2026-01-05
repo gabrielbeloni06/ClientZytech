@@ -22,6 +22,7 @@ const TEMPLATES_BY_PLAN: Record<string, string[]> = {
 export default function ClientDetailsPage() {
   const params = useParams()
   const router = useRouter()
+  const clientId = params?.id
   
   const [role, setRole] = useState<string>('')
   const [client, setClient] = useState<any>(null)
@@ -70,7 +71,7 @@ export default function ClientDetailsPage() {
 
   const [notes, setNotes] = useState(''); const [isSavingNotes, setIsSavingNotes] = useState(false)
 
-  useEffect(() => { if (params?.id) loadAllData() }, [params?.id])
+  useEffect(() => { if (clientId) loadAllData() }, [clientId])
   useEffect(() => { 
     if (client) { 
         if (client.business_type === 'real_estate') {
@@ -114,7 +115,8 @@ export default function ClientDetailsPage() {
   }
 
   async function fetchClientOrders() {
-      const { data: orderData } = await supabase.from('orders').select('*').eq('organization_id', params.id).order('created_at', { ascending: false }).limit(50)
+      if (!clientId) return
+      const { data: orderData } = await supabase.from('orders').select('*').eq('organization_id', clientId).order('created_at', { ascending: false }).limit(50)
       setClientOrders(orderData || [])
   }
   
@@ -131,16 +133,17 @@ export default function ClientDetailsPage() {
   }
 
   async function loadAllData() {
+    if (!clientId) return
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/'); return }
     const { data: profile } = await supabase.from('profiles').select('role, organization_id').eq('id', user.id).single()
     const userRole = profile?.role || 'org_owner'; setRole(userRole)
-    if (userRole !== 'super_admin' && profile?.organization_id !== params.id) { alert('Acesso negado.'); router.push('/dashboard'); return }
-    const { data: clientData, error } = await supabase.from('organizations').select('*').eq('id', params.id).single()
+    if (userRole !== 'super_admin' && profile?.organization_id !== clientId) { alert('Acesso negado.'); router.push('/dashboard'); return }
+    const { data: clientData, error } = await supabase.from('organizations').select('*').eq('id', clientId).single()
     if (error || !clientData) { router.push(userRole === 'super_admin' ? '/dashboard/clients' : '/dashboard'); return }
     setClient(clientData); setNotes(clientData.notes || '')
-    const { data: schedules } = await supabase.from('base_schedules').select('*').eq('organization_id', params.id)
+    const { data: schedules } = await supabase.from('base_schedules').select('*').eq('organization_id', clientId)
     
     setBotConfig({
         isActive: clientData.bot_status || false, phoneId: clientData.whatsapp_phone_id || '', accessToken: clientData.whatsapp_access_token || '',
@@ -161,7 +164,7 @@ export default function ClientDetailsPage() {
         name: clientData.name, plan: clientData.plan, value: String(clientData.subscription_value || '0'), cycle: clientData.subscription_cycle,
         payment_method: clientData.payment_method || 'pix', valid_until: clientData.subscription_valid_until ? new Date(clientData.subscription_valid_until).toISOString().split('T')[0] : ''
     })
-    const { data: prodData } = await supabase.from('products').select('*').eq('organization_id', params.id).order('created_at', { ascending: false })
+    const { data: prodData } = await supabase.from('products').select('*').eq('organization_id', clientId).order('created_at', { ascending: false })
     setProducts(prodData || [])
     if (['delivery', 'commerce', 'service'].includes(clientData.business_type)) await fetchClientOrders()
     setLoading(false)
@@ -324,7 +327,7 @@ export default function ClientDetailsPage() {
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
             {[
                 { id: 'overview', label: 'Visão Geral', icon: LayoutDashboard },
-                { id: 'chat', label: 'Bate-papo', icon: MessageSquare },
+                { id: 'chat', label: 'Bate-papo', icon: MessageSquare }, // ABA NOVA
                 { id: 'contract', label: 'Configurações', icon: Settings },
                 showNotifications && { id: 'notifications', label: 'Alertas', icon: Bell }, 
                 { id: 'bot_catalog', label: isRealEstate ? 'Imóveis' : 'Catálogo Bot', icon: isRealEstate ? Home : Package },
@@ -341,7 +344,7 @@ export default function ClientDetailsPage() {
         <div className="min-h-[400px]">
             {activeTab === 'overview' && <OverviewTab monthlyStats={monthlyStats} loadingStats={loadingStats} notes={notes} setNotes={setNotes} handleSaveNotes={handleSaveNotes} isSavingNotes={isSavingNotes} unit={isRealEstate ? '' : 'R$'} statLabel={isRealEstate ? 'Visitas Realizadas' : 'Performance'} />}
             {activeTab === 'chat' && <ChatTab client={client} />}
-            {activeTab === 'contract' && <SettingsTab role={role} botConfig={botConfig} setBotConfig={setBotConfig} syncScheduleFromDb={syncScheduleFromDb} isSyncingSchedule={isSyncingSchedule} handleSaveBotConfig={handleSaveBotConfig} isSavingBot={isSavingBot} isEditing={isEditing} setIsEditing={setIsEditing} editForm={editForm} setEditForm={setEditForm} handleUpdateClient={handleUpdateClient} botCapabilities={getBotCaps} filteredTemplates={getFilteredTemplates()} />}
+            {activeTab === 'contract' && <SettingsTab role={role} botConfig={botConfig} setBotConfig={setBotConfig} syncScheduleFromDb={syncScheduleFromDb} isSyncingSchedule={isSyncingSchedule} handleSaveBotConfig={handleSaveBotConfig} isSavingBot={isSavingBot} isEditing={isEditing} setIsEditing={setIsEditing} editForm={editForm} setEditForm={setEditForm} handleUpdateClient={handleUpdateClient} botCapabilities={getBotCaps} filteredTemplates={getFilteredTemplates()} client={client} />}
             {activeTab === 'notifications' && showNotifications && <NotificationsTab notifications={notifications} markAsRead={markAsRead} loadingNotifications={loadingNotifications} fetchNotifications={fetchNotifications} />}
             {activeTab === 'bot_catalog' && <CatalogTab client={client} isRealEstate={isRealEstate} isServiceType={isServiceType} products={products} setIsProductModalOpen={setIsProductModalOpen} labels={labels} toggleProductStatus={toggleProductStatus} handleDeleteProduct={handleDeleteProduct} />}
             {activeTab === 'categories' && <div className="max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4"><div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl p-6"><h3 className="font-bold text-lg text-white mb-4">Categorias</h3><div className="flex flex-wrap gap-2 mb-6">{customCategories.map(cat => (<div key={cat} className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 flex items-center gap-2"><span className="text-sm font-medium text-gray-300">{cat}</span><button onClick={() => handleRemoveCategory(cat)}><X size={14}/></button></div>))}</div><form onSubmit={handleAddCategory} className="flex gap-2"><input type="text" placeholder="Nova categoria..." className="flex-1 bg-[#050505] border border-white/10 rounded-xl px-4 py-3 text-white outline-none" value={newCategoryInput} onChange={e => setNewCategoryInput(e.target.value)} /><button type="submit" className="bg-white/10 text-white px-5 rounded-xl font-bold"><Plus size={20}/></button></form><div className="mt-4 flex justify-end"><button onClick={handleSaveCategories} className="text-blue-400 font-bold">Salvar</button></div></div></div>}
