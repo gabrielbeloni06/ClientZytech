@@ -13,9 +13,7 @@ export async function POST(req: NextRequest) {
   try {
     const { instanceName } = await req.json();
 
-    // Log de diagnóstico
-    console.log(`>>> [INIT] Conectando a ${BASE_URL}`);
-    console.log(`>>> [AUTH] Chave (inicio): '${EVO_KEY.substring(0, 3)}...' (Tamanho: ${EVO_KEY.length})`);
+    console.log(`>>> [INIT] Conectando a ${BASE_URL} para instância: ${instanceName}`);
 
     if (!BASE_URL || !EVO_KEY) {
         return NextResponse.json({ error: "Configuração da API incompleta." }, { status: 500 });
@@ -23,16 +21,14 @@ export async function POST(req: NextRequest) {
 
     if (!instanceName) return NextResponse.json({ error: "Nome obrigatório" }, { status: 400 });
 
-    // Cabeçalhos que imitam um cliente padrão + segurança dupla de chave
     const headers = {
         "Content-Type": "application/json",
-        "apikey": EVO_KEY,                  // Padrão Evolution
-        "Authorization": `Bearer ${EVO_KEY}`, // Fallback comum
-        "User-Agent": "ClientzyBot/1.0"     // Evita bloqueio de 'bot' sem user-agent
+        "apikey": EVO_KEY,
+        "Authorization": `Bearer ${EVO_KEY}`,
+        "User-Agent": "ClientzyBot/1.0"
     };
 
     // 1. TENTATIVA DE CRIAÇÃO (CREATE)
-    // Usamos a mesma estrutura que funcionou no seu CURL
     const createUrl = `${BASE_URL}/instance/create`;
     const createPayload = {
       instanceName: instanceName,
@@ -53,20 +49,24 @@ export async function POST(req: NextRequest) {
         
         const resText = await createRes.text();
 
-        // Tratamento específico de erro de autenticação
-        if (createRes.status === 401 || createRes.status === 403) {
-            console.error(`>>> [401 BLOCKED] Resposta da VPS: ${resText}`);
-            return NextResponse.json({ 
-                error: `A VPS recusou a conexão (401). Resposta: ${resText}. Confirme se rodou 'docker compose down -v' na VPS.` 
-            }, { status: 401 });
+        // Tratamento Inteligente de Erros
+        if (createRes.status === 403 && (resText.includes("already in use") || resText.includes("already exists"))) {
+            // SUCESSO DISFARÇADO: Se já existe, apenas logamos e seguimos para buscar o QR Code
+            console.log(`>>> [CREATE SKIP] Instância já existe. Prosseguindo para conexão.`);
+        } 
+        else if (createRes.status === 401) {
+            // ERRO REAL DE SENHA
+            console.error(`>>> [401 AUTH] Senha rejeitada.`);
+            return NextResponse.json({ error: "Erro de Autenticação: Verifique a API KEY na Vercel." }, { status: 401 });
         }
-        
-        // Se criou ou já existe, seguimos
-        console.log(`>>> [CREATE RESULT] ${createRes.status}: ${resText.substring(0, 100)}`);
-        
-        // Se foi criado agora (201), esperamos o boot
-        if (createRes.status === 201) {
-             await delay(3000);
+        else if (!createRes.ok) {
+            // OUTROS ERROS
+            console.warn(`>>> [CREATE WARN] HTTP ${createRes.status}: ${resText}`);
+        } else {
+            // SUCESSO REAL (201)
+            console.log(`>>> [CREATE SUCCESS] Instância criada.`);
+            // Se criou agora, espera o boot
+            await delay(3000);
         }
 
     } catch (e: any) {
@@ -80,12 +80,13 @@ export async function POST(req: NextRequest) {
         try {
             const connectRes = await fetch(`${BASE_URL}/instance/connect/${instanceName}`, {
                 method: 'GET',
-                headers // Usa os mesmos headers reforçados
+                headers
             });
 
             if (connectRes.ok) {
                 const data = await connectRes.json();
                 
+                // Se já conectou
                 if (data?.instance?.state === 'open') {
                     return NextResponse.json({ status: "connected", message: "Conectado!" });
                 }
@@ -102,7 +103,7 @@ export async function POST(req: NextRequest) {
                     }
                 }
             } else {
-                console.log(`>>> [CONNECT FAIL] ${connectRes.status}`);
+                console.log(`>>> [CONNECT FAIL] HTTP ${connectRes.status}`);
             }
         } catch (e) {
             console.log(">>> [RETRY QR]", e);
