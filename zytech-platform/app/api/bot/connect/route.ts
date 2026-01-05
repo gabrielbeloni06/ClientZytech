@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 const EVO_URL = process.env.EVOLUTION_API_URL;
 const EVO_KEY = process.env.EVOLUTION_API_KEY;
 
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export async function POST(req: NextRequest) {
   try {
     const { instanceName } = await req.json();
@@ -23,12 +25,12 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ status: 'connected', message: "Instância já conectada e pronta!" });
         }
 
-        console.log(`>>> [AUTO-CORREÇÃO] Instância '${instanceName}' existe mas está desconectada (${state}). Recriando...`);
-        
+        console.log(`>>> [AUTO-CORREÇÃO] Limpando instância antiga '${instanceName}' (Estado: ${state})...`);
         await fetch(`${EVO_URL}/instance/delete/${instanceName}`, {
             method: 'DELETE',
             headers: { 'apikey': EVO_KEY! }
         });
+        await delay(1000);
     }
 
     const createUrl = `${EVO_URL}/instance/create`;
@@ -54,16 +56,29 @@ export async function POST(req: NextRequest) {
         }
     }
 
-    const connectUrl = `${EVO_URL}/instance/connect/${instanceName}`;
-    const connectRes = await fetch(connectUrl, {
-      method: 'GET',
-      headers: { 'apikey': EVO_KEY! }
-    });
+    let qrCode = null;
+    let pairingCode = null;
+    let attempts = 0;
+    const maxAttempts = 3;
 
-    const connectData = await connectRes.json();
+    while (attempts < maxAttempts && !qrCode) {
+        attempts++;
+        console.log(`>>> [CONNECT] Tentativa ${attempts}/${maxAttempts} de buscar QR Code...`);
+        
+        const connectUrl = `${EVO_URL}/instance/connect/${instanceName}`;
+        const connectRes = await fetch(connectUrl, {
+            method: 'GET',
+            headers: { 'apikey': EVO_KEY! }
+        });
 
-    const qrCode = connectData.base64 || connectData.qrcode?.base64 || connectData.qrcode;
-    const pairingCode = connectData.code || connectData.pairingCode;
+        if (connectRes.ok) {
+            const connectData = await connectRes.json();
+            qrCode = connectData.base64 || connectData.qrcode?.base64 || connectData.qrcode;
+            pairingCode = connectData.code || connectData.pairingCode;
+        }
+
+        if (!qrCode) await delay(2000);
+    }
 
     if (qrCode) {
         return NextResponse.json({ 
@@ -73,7 +88,7 @@ export async function POST(req: NextRequest) {
         });
     }
 
-    return NextResponse.json({ error: "Instância criada, mas o QR Code não foi retornado. Tente clicar novamente." }, { status: 500 });
+    return NextResponse.json({ error: "A API demorou para gerar o QR Code. Por favor, clique novamente." }, { status: 500 });
 
   } catch (error: any) {
     console.error("Erro Geral Route:", error);
