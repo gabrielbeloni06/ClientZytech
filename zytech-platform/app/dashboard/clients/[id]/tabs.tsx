@@ -6,7 +6,7 @@ import {
   Home, Scissors, Package, Plus, MapPin, Clock, CheckCircle, XCircle, Truck, 
   ChefHat, Phone, Calendar, ExternalLink, MessageCircle, Filter, User, Link as LinkIcon,
   ShoppingCart, List, X, Settings, Brain, Trash2, ArrowRight, HelpCircle, Bell, UserPlus,
-  MessageSquare, Search, Send, Loader2, QrCode, Smartphone
+  MessageSquare, Search, Send, Loader2, Smartphone, Hash
 } from 'lucide-react'
 
 export const NeonLineChart = ({ currentData, prevTotal }: { currentData: number[], prevTotal: number }) => {
@@ -246,44 +246,42 @@ export const ChatTab = ({ client }: any) => {
 }
 
 export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb, isSyncingSchedule, handleSaveBotConfig, isSavingBot, isEditing, setIsEditing, editForm, setEditForm, handleUpdateClient, botCapabilities, filteredTemplates }: any) => {
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<string>('idle'); 
-  const [loadingQr, setLoadingQr] = useState(false);
+  const [pairCode, setPairCode] = useState<string | null>(null);
+  const [phoneNumberInput, setPhoneNumberInput] = useState('');
+  const [loadingPair, setLoadingPair] = useState(false);
 
-  const handleGenerateQr = async () => {
-      if (!botConfig.phoneId) {
-          alert("Defina um Nome da Instância primeiro (ex: imobiliaria_01) e salve.");
+  const handleGeneratePairCode = async () => {
+      if (!botConfig.phoneId || !phoneNumberInput) {
+          alert("Preencha o Nome da Instância e o Número do WhatsApp.");
           return;
       }
       
-      setLoadingQr(true);
-      setQrCode(null);
-      setConnectionStatus('loading');
+      setLoadingPair(true);
+      setPairCode(null);
 
       try {
           const response = await fetch('/api/bot/connect', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ instanceName: botConfig.phoneId })
+              body: JSON.stringify({ 
+                  instanceName: botConfig.phoneId,
+                  phoneNumber: phoneNumberInput
+              })
           });
           
           const data = await response.json();
 
           if (data.error) {
               alert("Erro: " + data.error);
-              setConnectionStatus('idle');
           } else if (data.status === 'connected') {
-              setConnectionStatus('connected');
-              alert("Esta instância já está conectada ao WhatsApp!");
-          } else if (data.qrcode) {
-              setQrCode(data.qrcode);
-              setConnectionStatus('qrcode');
+              alert("Esta instância já está conectada!");
+          } else if (data.code) {
+              setPairCode(data.code);
           }
       } catch (err) {
-          alert("Erro de conexão com o servidor. Verifique se a VPS está ligada.");
-          setConnectionStatus('idle');
+          alert("Erro de conexão.");
       } finally {
-          setLoadingQr(false);
+          setLoadingPair(false);
       }
   };
 
@@ -305,38 +303,44 @@ export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb,
                           <div className="space-y-1"><label className="text-[10px] font-bold text-yellow-500 uppercase flex items-center gap-1"><Sparkles size={10}/> Prompt Mestre (Admin)</label><textarea className="w-full bg-[#050505] border border-yellow-500/20 rounded-lg p-3 text-gray-300 text-sm focus:border-yellow-500/50 font-mono" rows={3} value={botConfig.aiPersona} onChange={e => setBotConfig({...botConfig, aiPersona: e.target.value})} /></div>
                           <div className="space-y-1"><div className="flex justify-between"><label className="text-[10px] font-bold text-blue-400 uppercase">Contexto: Horários</label><button onClick={syncScheduleFromDb} disabled={isSyncingSchedule} className="text-[10px] text-gray-500 hover:text-white flex items-center gap-1">{isSyncingSchedule ? <RefreshCcw size={10} className="animate-spin"/> : 'Sincronizar'}</button></div><input type="text" className="w-full bg-[#050505] border border-blue-500/20 rounded-lg p-2.5 text-gray-300 text-sm focus:border-blue-500/50" value={botConfig.openingHours} onChange={e => setBotConfig({...botConfig, openingHours: e.target.value})} /></div>
                           
+                          {/* CONEXÃO VIA PAIRING CODE */}
                           <div className="pt-4 border-t border-white/5 space-y-4 bg-white/[0.02] p-4 rounded-xl border border-white/5">
                               <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-green-500 uppercase flex items-center gap-1"><Smartphone size={12}/> Nome da Instância (ID)</label>
+                                  <label className="text-[10px] font-bold text-green-500 uppercase flex items-center gap-1"><Smartphone size={12}/> Nome da Instância</label>
                                   <input placeholder="Ex: imobiliaria_clientzy_01" className="w-full bg-[#050505] border border-white/10 rounded-lg p-2 text-xs font-mono text-gray-400 focus:border-green-500 outline-none" value={botConfig.phoneId} onChange={e => setBotConfig({...botConfig, phoneId: e.target.value})} />
-                                  <p className="text-[9px] text-gray-500">Este ID cria a conexão na VPS.</p>
                               </div>
-                              
-                              <div className="pt-2 flex flex-col items-center">
-                                  {connectionStatus === 'connected' ? (
-                                      <div className="w-full p-4 bg-green-500/20 border border-green-500/30 rounded-xl text-center text-green-400 font-bold text-sm flex items-center justify-center gap-2">
-                                          <CheckCircle size={18}/> WhatsApp Conectado e Operante!
-                                      </div>
-                                  ) : qrCode ? (
-                                      <div className="text-center space-y-3 animate-in zoom-in duration-300">
-                                          <p className="text-xs text-white font-bold">Escaneie com o WhatsApp:</p>
-                                          <div className="bg-white p-2 rounded-lg inline-block">
-                                              <img src={qrCode} alt="QR Code WhatsApp" className="w-48 h-48 object-contain" />
-                                          </div>
-                                          <p className="text-[10px] text-gray-500">O código expira em 40s.</p>
-                                      </div>
-                                  ) : (
-                                      <button 
+
+                              {!pairCode ? (
+                                <div className="space-y-2 pt-2 animate-in fade-in">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1"><Hash size={10}/> Número do WhatsApp (com DDD)</label>
+                                        <input 
+                                            placeholder="Ex: 5531999998888" 
+                                            className="w-full bg-[#050505] border border-white/10 rounded-lg p-2 text-xs font-mono text-white focus:border-green-500 outline-none" 
+                                            value={phoneNumberInput} 
+                                            onChange={e => setPhoneNumberInput(e.target.value.replace(/\D/g, ''))} 
+                                        />
+                                    </div>
+                                    <button 
                                         type="button"
-                                        onClick={handleGenerateQr}
-                                        disabled={loadingQr || !botConfig.phoneId}
+                                        onClick={handleGeneratePairCode}
+                                        disabled={loadingPair || !botConfig.phoneId || !phoneNumberInput}
                                         className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-green-900/20 disabled:opacity-50"
-                                      >
-                                          {loadingQr ? <Loader2 size={16} className="animate-spin"/> : <QrCode size={16}/>}
-                                          {loadingQr ? 'Conectando ao Servidor...' : 'Gerar QR Code de Conexão'}
-                                      </button>
-                                  )}
-                              </div>
+                                    >
+                                        {loadingPair ? <Loader2 size={16} className="animate-spin"/> : <Smartphone size={16}/>}
+                                        {loadingPair ? 'Solicitando...' : 'Gerar Código de Conexão'}
+                                    </button>
+                                </div>
+                              ) : (
+                                <div className="pt-2 text-center animate-in zoom-in duration-300">
+                                    <p className="text-[10px] text-gray-400 mb-2">Abra o WhatsApp {'>'} Aparelhos Conectados {'>'} Conectar com número</p>
+                                    <div className="bg-white/10 border border-white/20 p-4 rounded-xl">
+                                        <span className="text-3xl font-mono font-bold text-white tracking-widest">{pairCode}</span>
+                                    </div>
+                                    <p className="text-[10px] text-green-400 mt-2">Código gerado! Digite no seu celular.</p>
+                                    <button onClick={() => setPairCode(null)} className="text-[10px] text-gray-500 underline mt-2">Tentar outro número</button>
+                                </div>
+                              )}
                               
                               <div className="hidden">
                                   <input type="password" value={botConfig.accessToken} onChange={e => setBotConfig({...botConfig, accessToken: e.target.value})} />
@@ -351,6 +355,7 @@ export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb,
           </div>
       </div>
       
+      {/* CARD DIREITO (CONTRATO) MANTIDO IGUAL */}
       <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl h-fit">
           <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
               <div><h3 className="font-bold text-lg flex items-center gap-2 text-white"><Briefcase size={20} className="text-blue-500"/> Contrato</h3><p className="text-xs text-gray-500 mt-1">Detalhes de faturamento e plano.</p></div>
