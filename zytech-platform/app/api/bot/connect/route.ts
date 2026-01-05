@@ -1,168 +1,116 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 
-// Imports dos Bots
-import { botRealEstateControl, BotContext } from "@/lib/bots/templates/core/real_estate";
-// import { botDeliveryControl } from "@/lib/bots/templates/core/delivery"; 
+export const runtime = "nodejs";
 
-import { sendWhatsAppMessage } from "@/lib/whatsapp";
-import { transcribeAudio } from "@/lib/groq-audio";
+const EVO_URL = process.env.EVOLUTION_API_URL!;
+// Remove barra final se houver para evitar erro de URL (ex: http://ip:8080//instance)
+const BASE_URL = EVO_URL?.endsWith('/') ? EVO_URL.slice(0, -1) : EVO_URL;
+const EVO_KEY = process.env.EVOLUTION_API_KEY!;
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Health Check para o painel da Evolution (se necessário)
-export async function GET(req: NextRequest) {
-  return new NextResponse("Evolution Webhook Online 🚀", { status: 200 });
+// Função que fica tentando pegar o QR Code até ele aparecer
+async function forceQR(instanceName: string, timeout = 45000) {
+  const start = Date.now();
+  console.log(`>>> [LOOP QR] Iniciando busca persistente para: ${instanceName}`);
+
+  while (Date.now() - start < timeout) {
+    try {
+      const res = await fetch(
+        `${BASE_URL}/instance/connect/${instanceName}`,
+        { headers: { 'apikey': EVO_KEY } }
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        
+        // Se vier { count: 0 }, é porque o Chrome da VPS ainda está abrindo. Ignora.
+        if (data.count === 0) {
+             // console.log(">>> [WAIT] count:0 (Carregando...)");
+        } 
+        else {
+            // Tenta encontrar o QR Code real (base64)
+            const qr = 
+                data?.base64 || 
+                data?.qrcode?.base64 || 
+                data?.qrcode;
+
+            if (qr && typeof qr === 'string' && qr.length > 50) {
+                console.log(">>> [SUCCESS] QR Code encontrado!");
+                return qr;
+            }
+            
+            // Se já estiver conectado
+            if (data?.instance?.state === 'open') return "CONNECTED";
+        }
+      } 
+    } catch (e) {
+      console.log(">>> [RETRY ERROR]", e);
+    }
+
+    // Espera 2.5s antes de tentar de novo
+    await delay(2500);
+  }
+
+  throw new Error("Timeout: A VPS não gerou o QR Code a tempo (travou em count:0).");
 }
 
-// ============================================================================
-// RECEBIMENTO DE MENSAGENS (EVOLUTION API)
-// ============================================================================
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const { instanceName } = await req.json();
 
-    // 1. Validação do Evento
-    // A Evolution v2 envia 'event': 'messages.upsert' para novas mensagens
-    if (body.event !== 'messages.upsert') {
-        // Ignora eventos de status, presença, etc. para não poluir
-        return new NextResponse("OK", { status: 200 });
-    }
+    if (!instanceName) return NextResponse.json({ error: "Nome obrigatório" }, { status: 400 });
 
-    const msgData = body.data;
-    const instanceName = body.instance; // O nome da instância (Ex: "imobiliaria_01")
-    
-    // 2. Filtros Básicos
-    // Ignorar mensagens enviadas pelo próprio bot (fromMe)
-    if (msgData.key.fromMe) return new NextResponse("OK", { status: 200 });
+    console.log(`>>> [INIT] Resetando instância: ${instanceName}`);
 
-    // Ignorar mensagens de Status (Broadcast)
-    if (msgData.key.remoteJid === 'status@broadcast') return new NextResponse("OK", { status: 200 });
+    // 1. DELETE (Limpeza Preventiva para não dar conflito)
+    try {
+      await fetch(`${BASE_URL}/instance/delete/${instanceName}`, {
+        method: "DELETE",
+        headers: { 'apikey': EVO_KEY }
+      });
+      await delay(2000); 
+    } catch {}
 
-    // (Opcional) Ignorar Grupos se o bot for apenas para atendimento direto
-    // if (msgData.key.remoteJid.includes('@g.us')) return new NextResponse("OK", { status: 200 });
-
-    console.log(`>>> [EVO WEBHOOK] Msg de ${msgData.pushName} na instância: ${instanceName}`);
-
-    // 3. Identificar Empresa no Supabase
-    // Usamos o 'whatsapp_phone_id' para armazenar o 'Nome da Instância' da Evolution
-    const { data: org, error } = await supabase
-      .from("organizations")
-      .select("id, bot_status, business_type, name, ai_faq, whatsapp_access_token")
-      .eq("whatsapp_phone_id", instanceName) 
-      .single();
-
-    if (!org) {
-        console.warn(`>>> [EVO IGNORED] Instância '${instanceName}' não encontrada no banco.`);
-        return new NextResponse("OK", { status: 200 });
-    }
-
-    if (!org.bot_status) {
-        // Bot desligado, apenas ignora
-        return new NextResponse("OK", { status: 200 });
-    }
-
-    // 4. Extração de Dados da Mensagem
-    const customerPhone = msgData.key.remoteJid.replace('@s.whatsapp.net', ''); // Remove o sufixo
-    const customerName = msgData.pushName || "Cliente";
-    let userText = "";
-    
-    const messageType = msgData.messageType;
-
-    // Tratamento de tipos de mensagem da Evolution
-    if (messageType === 'conversation') {
-        userText = msgData.message.conversation;
-    } else if (messageType === 'extendedTextMessage') {
-        userText = msgData.message.extendedTextMessage.text;
-    } else if (messageType === 'audioMessage') {
-        // Lógica de áudio (Simplificada para não travar se falhar transcrição)
-        // A Evolution geralmente manda o base64 se configurado, ou precisamos baixar
-        console.log(">>> [AUDIO] Recebido, transcrição pendente de implementação completa.");
-        userText = "[Áudio recebido]"; 
-        // Se quiser implementar transcrição, use:
-        // const buffer = await downloadMediaEvolution(msgData);
-        // userText = await transcribeAudio(buffer);
-    }
-
-    if (!userText) return new NextResponse("OK", { status: 200 });
-
-    // 5. MÓDULO DE MEMÓRIA (Salvar no Banco)
-    await supabase.from('chat_messages').insert({
-        organization_id: org.id,
-        phone: customerPhone,
-        role: 'user',
-        content: userText,
-        sender_name: customerName
+    // 2. CREATE (Criação)
+    const createRes = await fetch(`${BASE_URL}/instance/create`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": EVO_KEY },
+      body: JSON.stringify({
+        instanceName: instanceName,
+        token: crypto.randomUUID(),
+        qrcode: true,
+        integration: "WHATSAPP-BAILEYS",
+        reject_call: true,
+        msgBufferLimit: 50
+      })
     });
 
-    // 6. Recuperar Contexto (Últimas 6 mensagens)
-    const { data: historyData } = await supabase
-        .from('chat_messages')
-        .select('role, content')
-        .eq('organization_id', org.id)
-        .eq('phone', customerPhone)
-        .order('created_at', { ascending: false })
-        .limit(6);
-    
-    const history = historyData ? historyData.reverse() : [];
-
-    // 7. Preparar Envio de Resposta
-    const sendMessageWrapper = async (responseText: string) => {
-        if (!responseText) return;
-
-        // Envia via Evolution API
-        // Nota: O primeiro argumento (token) deixamos vazio pois usamos a chave global no lib/whatsapp.ts
-        await sendWhatsAppMessage(
-            '', 
-            instanceName, // Nome da instância
-            customerPhone, 
-            responseText
-        );
-        
-        // Salva resposta do bot no banco
-        await supabase.from('chat_messages').insert({
-            organization_id: org.id,
-            phone: customerPhone,
-            role: 'assistant',
-            content: responseText
-        });
-    };
-
-    // Contexto para o Bot
-    const botContext: BotContext = { 
-        orgId: org.id, 
-        history, 
-        text: userText, 
-        customerPhone, 
-        customerName 
-    };
-
-    // 8. Roteamento de Bots
-    if (org.business_type === 'real_estate') {
-        const result = await botRealEstateControl(botContext, sendMessageWrapper, supabase);
-        
-        // Se o bot retornar uma resposta final direta
-        if (result?.response) {
-            await sendMessageWrapper(result.response);
+    if (!createRes.ok) {
+        const txt = await createRes.text();
+        // Se der erro que não seja "já existe", logamos
+        if (!txt.includes("already")) {
+             console.log(`>>> [CREATE INFO] ${txt}`);
         }
-    } 
-    else if (org.business_type === 'delivery') {
-        // const result = await botDeliveryControl(botContext, sendMessageWrapper, supabase);
-        // if (result?.response) await sendMessageWrapper(result.response);
-    }
-    else {
-        // Fallback Genérico
-        await sendMessageWrapper(`Olá! Sou o assistente virtual da ${org.name}. Em que posso ajudar?`);
     }
 
-    return new NextResponse("OK", { status: 200 });
+    // 3. WAIT INICIAL (Essencial para sair do count:0)
+    await delay(4000);
 
-  } catch (error: any) {
-    console.error("Erro Crítico Webhook Evolution:", error);
-    // Retorna 200 mesmo com erro para a Evolution não ficar tentando reenviar a mensagem infinitamente
-    return new NextResponse("Internal Error Handled", { status: 200 });
+    // 4. LOOP DE BUSCA (A mágica acontece aqui)
+    const qrCode = await forceQR(instanceName);
+
+    if (qrCode === "CONNECTED") {
+        return NextResponse.json({ status: "connected", message: "Conectado!" });
+    }
+
+    return NextResponse.json({ status: "qrcode", qrcode: qrCode });
+
+  } catch (err: any) {
+    console.error(">>> [FATAL ERROR]", err);
+    return NextResponse.json(
+      { error: err.message || "Erro interno" },
+      { status: 500 }
+    );
   }
 }
