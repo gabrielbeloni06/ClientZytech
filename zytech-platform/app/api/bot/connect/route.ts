@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
         console.log(`>>> [PAIRING REQUEST] ${connectUrl}`);
         
         const pairRes = await fetch(connectUrl, {
-            method: 'GET', 
+            method: 'GET',
             headers: { 'apikey': EVO_KEY! }
         });
 
@@ -82,13 +82,26 @@ export async function POST(req: NextRequest) {
         }
 
         const pairData = await pairRes.json();
+        console.log(">>> [PAIRING RESPONSE]", JSON.stringify(pairData));
+
         const code = pairData.code || pairData.pairingCode;
 
         if (code) {
             return NextResponse.json({ status: 'pairing', code: code });
         }
         
-        return NextResponse.json({ error: "A API respondeu mas não enviou o código. Tente novamente." }, { status: 500 });
+        const qrFallback = pairData.base64 || pairData.qrcode?.base64 || pairData.qrcode;
+        if (qrFallback && typeof qrFallback === 'string' && qrFallback.length > 100) {
+             return NextResponse.json({ 
+                 status: 'qrcode', 
+                 qrcode: qrFallback, 
+                 message: "A API retornou QR Code em vez de código numérico." 
+             });
+        }
+        
+        return NextResponse.json({ 
+            error: `API respondeu sem código. Resposta bruta: ${JSON.stringify(pairData)}` 
+        }, { status: 500 });
     }
 
     await delay(2000);
