@@ -13,7 +13,7 @@ const supabase = createClient(
 async function sendZapiMessage(phone: string, message: string) {
   const url = `${process.env.ZAPI_BASE_URL}/send-text`;
 
-  await fetch(url, {
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -24,6 +24,11 @@ async function sendZapiMessage(phone: string, message: string) {
       message
     })
   });
+
+  if (!res.ok) {
+    const txt = await res.text();
+    console.error("Erro Z-API:", txt);
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -40,6 +45,10 @@ export async function POST(req: NextRequest) {
     }
 
     const customerPhone = msg.phone;
+    if (!customerPhone) {
+      return NextResponse.json({ ok: true });
+    }
+
     const text =
       msg.text?.message ||
       msg.text ||
@@ -51,7 +60,16 @@ export async function POST(req: NextRequest) {
     }
 
     const customerName = msg.senderName || "Visitante";
-    const instanceNumber = body?.instance?.number;
+
+    const instanceNumber =
+      body?.instance?.number ||
+      msg?.to ||
+      body?.phone;
+
+    if (!instanceNumber) {
+      console.error("Instance number não encontrado");
+      return NextResponse.json({ ok: true });
+    }
 
     const { data: org, error: orgError } = await supabase
       .from("organizations")
@@ -71,6 +89,9 @@ export async function POST(req: NextRequest) {
       .eq("customer_phone", customerPhone)
       .order("created_at", { ascending: true })
       .limit(10);
+    const sendMessage = async (msg: string) => {
+      await sendZapiMessage(customerPhone, msg);
+    };
 
     const result = await botRealEstateControl(
       {
@@ -80,7 +101,7 @@ export async function POST(req: NextRequest) {
         customerPhone,
         customerName
       },
-      async () => {},
+      sendMessage,
       supabase
     );
 
@@ -88,20 +109,21 @@ export async function POST(req: NextRequest) {
       await sendZapiMessage(customerPhone, result.response);
     }
 
-    await supabase.from("messages").insert([
-      {
-        org_id: org.id,
-        customer_phone: customerPhone,
-        role: "user",
-        content: text
-      },
-      {
+    await supabase.from("messages").insert({
+      org_id: org.id,
+      customer_phone: customerPhone,
+      role: "user",
+      content: text
+    });
+
+    if (result?.response) {
+      await supabase.from("messages").insert({
         org_id: org.id,
         customer_phone: customerPhone,
         role: "assistant",
         content: result.response
-      }
-    ]);
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
