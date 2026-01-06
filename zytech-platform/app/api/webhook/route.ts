@@ -1,110 +1,111 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { botRealEstateControl } from "@/lib/bots/templates/core/real_estate";
 
-// Imports dos Bots
-import { botRealEstateControl, BotContext } from "@/lib/bots/templates/core/real_estate";
-// import { botDeliveryControl } from "@/lib/bots/templates/core/delivery";
-
-import { sendWhatsAppMessage } from "@/lib/whatsapp";
-import { transcribeAudio } from "@/lib/groq-audio";
+export const runtime = "nodejs";
+export const maxDuration = 10;
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Health Check
-export async function GET(req: NextRequest) {
-  return new NextResponse("Evolution Webhook Online 🚀", { status: 200 });
+async function sendZapiMessage(phone: string, message: string) {
+  const url = `${process.env.ZAPI_BASE_URL}/send-text`;
+
+  await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Client-Token": process.env.ZAPI_CLIENT_TOKEN!
+    },
+    body: JSON.stringify({
+      phone,
+      message
+    })
+  });
 }
 
-// Recebimento de Mensagens
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // 1. Validação do Evento (Evolution v2: messages.upsert)
-    if (body.event !== 'messages.upsert') return new NextResponse("OK", { status: 200 });
-
-    const msgData = body.data;
-    const instanceName = body.instance; // Nome da instância = Phone ID no banco
-    
-    if (msgData.key.fromMe || msgData.key.remoteJid === 'status@broadcast') {
-        return new NextResponse("OK", { status: 200 });
+    const msg = body?.message;
+    if (!msg) {
+      return NextResponse.json({ ok: true });
     }
 
-    console.log(`>>> [MSG] De: ${msgData.pushName} | Instância: ${instanceName}`);
+    if (msg.fromMe) {
+      return NextResponse.json({ ok: true });
+    }
 
-    // 2. Busca Empresa
-    const { data: org } = await supabase
+    const customerPhone = msg.phone;
+    const text =
+      msg.text?.message ||
+      msg.text ||
+      msg.body ||
+      "";
+
+    if (!text.trim()) {
+      return NextResponse.json({ ok: true });
+    }
+
+    const customerName = msg.senderName || "Visitante";
+    const instanceNumber = body?.instance?.number;
+
+    const { data: org, error: orgError } = await supabase
       .from("organizations")
-      .select("id, bot_status, business_type, name, ai_faq, whatsapp_access_token")
-      .eq("whatsapp_phone_id", instanceName) 
+      .select("id")
+      .eq("whatsapp_number", instanceNumber)
       .single();
 
-    if (!org || !org.bot_status) return new NextResponse("OK", { status: 200 });
-
-    // 3. Extração
-    const customerPhone = msgData.key.remoteJid.replace('@s.whatsapp.net', '');
-    const customerName = msgData.pushName || "Cliente";
-    let userText = "";
-    
-    if (msgData.messageType === 'conversation') userText = msgData.message.conversation;
-    else if (msgData.messageType === 'extendedTextMessage') userText = msgData.message.extendedTextMessage.text;
-    else if (msgData.messageType === 'audioMessage') userText = "[Áudio]"; // Simplificado
-
-    if (!userText) return new NextResponse("OK", { status: 200 });
-
-    // 4. Memória
-    await supabase.from('chat_messages').insert({
-        organization_id: org.id,
-        phone: customerPhone,
-        role: 'user',
-        content: userText,
-        sender_name: customerName
-    });
-
-    const { data: historyData } = await supabase
-        .from('chat_messages')
-        .select('role, content')
-        .eq('organization_id', org.id)
-        .eq('phone', customerPhone)
-        .order('created_at', { ascending: false })
-        .limit(6);
-    
-    const history = historyData ? historyData.reverse() : [];
-
-    // 5. Bot
-    const sendMessageWrapper = async (text: string) => {
-        if (!text) return;
-        await sendWhatsAppMessage('', instanceName, customerPhone, text);
-        await supabase.from('chat_messages').insert({
-            organization_id: org.id,
-            phone: customerPhone,
-            role: 'assistant',
-            content: text
-        });
-    };
-
-    const botContext: BotContext = { 
-        orgId: org.id, 
-        history, 
-        text: userText, 
-        customerPhone, 
-        customerName 
-    };
-
-    if (org.business_type === 'real_estate') {
-        const result = await botRealEstateControl(botContext, sendMessageWrapper, supabase);
-        if (result?.response) await sendMessageWrapper(result.response);
-    } else {
-        await sendMessageWrapper(`Olá! Sou o assistente da ${org.name}.`);
+    if (orgError || !org) {
+      console.error("Org não encontrada:", orgError);
+      return NextResponse.json({ ok: true });
     }
 
-    return new NextResponse("OK", { status: 200 });
+    const { data: history } = await supabase
+      .from("messages")
+      .select("role, content")
+      .eq("org_id", org.id)
+      .eq("customer_phone", customerPhone)
+      .order("created_at", { ascending: true })
+      .limit(10);
 
-  } catch (error) {
-    console.error("Erro Webhook:", error);
-    return new NextResponse("Error", { status: 500 });
+    const result = await botRealEstateControl(
+      {
+        orgId: org.id,
+        history: history || [],
+        text,
+        customerPhone,
+        customerName
+      },
+      async () => {},
+      supabase
+    );
+
+    if (result?.response) {
+      await sendZapiMessage(customerPhone, result.response);
+    }
+
+    await supabase.from("messages").insert([
+      {
+        org_id: org.id,
+        customer_phone: customerPhone,
+        role: "user",
+        content: text
+      },
+      {
+        org_id: org.id,
+        customer_phone: customerPhone,
+        role: "assistant",
+        content: result.response
+      }
+    ]);
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("Erro webhook Z-API:", err);
+    return NextResponse.json({ ok: true });
   }
 }
