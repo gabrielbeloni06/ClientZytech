@@ -5,11 +5,6 @@ import { botRealEstateControl } from "@/lib/bots/templates/core/real_estate";
 export const runtime = "nodejs";
 export const maxDuration = 10;
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 async function sendZapiMessage(phone: string, message: string) {
   const url = `${process.env.ZAPI_BASE_URL}/send-text`;
 
@@ -33,14 +28,15 @@ async function sendZapiMessage(phone: string, message: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
     const body = await req.json();
-
     const msg = body?.message;
-    if (!msg) {
-      return NextResponse.json({ ok: true });
-    }
 
-    if (msg.fromMe) {
+    if (!msg || msg.fromMe) {
       return NextResponse.json({ ok: true });
     }
 
@@ -71,14 +67,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    const { data: org, error: orgError } = await supabase
+    const { data: org } = await supabase
       .from("organizations")
       .select("id")
       .eq("whatsapp_number", instanceNumber)
       .single();
 
-    if (orgError || !org) {
-      console.error("Org não encontrada:", orgError);
+    if (!org) {
+      console.error("Org não encontrada");
       return NextResponse.json({ ok: true });
     }
 
@@ -89,6 +85,7 @@ export async function POST(req: NextRequest) {
       .eq("customer_phone", customerPhone)
       .order("created_at", { ascending: true })
       .limit(10);
+
     const sendMessage = async (msg: string) => {
       await sendZapiMessage(customerPhone, msg);
     };
@@ -126,6 +123,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ ok: true });
+
   } catch (err) {
     console.error("Erro webhook Z-API:", err);
     return NextResponse.json({ ok: true });
