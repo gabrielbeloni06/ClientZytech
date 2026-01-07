@@ -7,180 +7,89 @@ import {
   Home, Scissors, Package, Plus, MapPin, Clock, CheckCircle, XCircle, Truck, 
   ChefHat, Phone, Calendar, ExternalLink, MessageCircle, Filter, User, Link as LinkIcon,
   ShoppingCart, List, X, Settings, Brain, Trash2, ArrowRight, HelpCircle, Bell, UserPlus,
-  MessageSquare, Search, Send, Loader2, QrCode, Smartphone, ArrowUpRight, Ban, Play, ShieldAlert,
-  Zap, Eye, Key, CreditCard, Lock
+  MessageSquare, Search, Send, Loader2, QrCode, Smartphone, ArrowUpRight, Hash, Edit
 } from 'lucide-react'
 
+export const NeonLineChart = ({ currentData, prevTotal }: { currentData: number[], prevTotal: number }) => {
+  const height = 60
+  const width = 200
+  const maxVal = Math.max(...currentData, 1)
+  const points = currentData.map((val, i) => {
+    const x = (i / (currentData.length - 1)) * width
+    const y = height - (val / maxVal) * height
+    return `${x},${y}`
+  }).join(' ')
 
-const Card = ({ children, className = "" }: any) => (
-  <div className={`bg-[#0F0F11] border border-white/[0.08] rounded-xl overflow-hidden shadow-sm ${className}`}>
-    {children}
+  return (
+    <div className="relative h-48 w-full bg-gradient-to-b from-blue-500/5 to-transparent rounded-xl border border-blue-500/10 p-4 overflow-hidden group">
+      <div className="absolute inset-0 grid grid-rows-4 w-full h-full opacity-20 pointer-events-none">
+         <div className="border-t border-blue-500/20 border-dashed"></div>
+         <div className="border-t border-blue-500/20 border-dashed"></div>
+         <div className="border-t border-blue-500/20 border-dashed"></div>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible" preserveAspectRatio="none">
+        <defs>
+          <filter id="neon-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+            <feMerge><feMergeNode in="coloredBlur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <linearGradient id="line-gradient" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#60a5fa" />
+            <stop offset="100%" stopColor="#a855f7" />
+          </linearGradient>
+        </defs>
+        <polyline points={points} fill="none" stroke="url(#line-gradient)" strokeWidth="2" filter="url(#neon-glow)" strokeLinecap="round" strokeLinejoin="round" className="drop-shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
+        <polygon points={`0,${height} ${points} ${width},${height}`} fill="url(#line-gradient)" opacity="0.1" />
+      </svg>
+    </div>
+  )
+}
+
+export const OverviewTab = ({ monthlyStats, loadingStats, notes, setNotes, handleSaveNotes, isSavingNotes, unit = "R$", statLabel = "Performance" }: any) => (
+  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="lg:col-span-2 bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl p-6 relative overflow-hidden shadow-2xl">
+          <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 to-transparent pointer-events-none"></div>
+          <div className="flex justify-between items-center mb-8 relative z-10">
+              <div>
+                  <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-2"><TrendingUp size={14}/> {statLabel}</p>
+                  <h2 className="text-4xl font-bold text-white tracking-tight">
+                      {unit} {monthlyStats.length > 0 ? monthlyStats[monthlyStats.length-1].value.toLocaleString('pt-BR', {minimumFractionDigits: unit === 'R$' ? 2 : 0}) : '0'}
+                  </h2>
+              </div>
+          </div>
+          <div className="h-64 w-full flex items-end justify-between gap-3 relative z-10">
+              {monthlyStats.length === 0 && !loadingStats && (<div className="absolute inset-0 flex items-center justify-center text-gray-600 italic">Sem dados</div>)}
+              <NeonLineChart currentData={monthlyStats.map((s:any) => s.value)} prevTotal={0} />
+          </div>
+      </div>
+      <div className="space-y-6">
+          <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl p-6 flex flex-col justify-between h-[180px] shadow-lg group hover:border-green-500/30 transition-colors">
+              <div className="flex justify-between items-start">
+                  <div>
+                      <p className="text-gray-500 text-xs font-bold uppercase mb-1">Status do Sistema</p>
+                      <h3 className="text-xl font-bold text-white flex items-center gap-2">Operacional</h3>
+                  </div>
+                  <div className="p-2 bg-green-500/10 rounded-lg border border-green-500/20"><Power size={20} className="text-green-500"/></div>
+              </div>
+              <div className="flex items-center gap-3">
+                  <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span></span>
+                  <span className="text-sm text-green-400 font-mono">Conexão Estável</span>
+              </div>
+          </div>
+          <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl p-6 flex flex-col h-[calc(100%-204px)] shadow-lg">
+              <div className="flex justify-between items-center mb-4">
+                  <span className="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><FileText size={14}/> Notas Internas</span>
+                  <button onClick={handleSaveNotes} disabled={isSavingNotes} className="text-[10px] font-bold bg-blue-600/20 text-blue-400 px-2 py-1 rounded hover:bg-blue-600/40 transition-colors">{isSavingNotes ? '...' : 'SALVAR'}</button>
+              </div>
+              <textarea className="flex-1 bg-black/40 border border-white/5 rounded-xl p-3 text-sm text-gray-300 outline-none resize-none focus:border-blue-500/50 focus:bg-black/60 transition-all placeholder:text-gray-700" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Escreva observações sobre este cliente..." />
+          </div>
+      </div>
   </div>
 )
-
-const Badge = ({ children, color = "gray" }: any) => {
-    const colors: any = {
-        green: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-        blue: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-        red: "bg-red-500/10 text-red-400 border-red-500/20",
-        yellow: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-        gray: "bg-zinc-800 text-zinc-400 border-zinc-700",
-        purple: "bg-purple-500/10 text-purple-400 border-purple-500/20"
-    }
-    return <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${colors[color] || colors.gray}`}>{children}</span>
-}
-
-
-export const OverviewTab = ({ monthlyStats, loadingStats, notes, setNotes, handleSaveNotes, isSavingNotes, unit = "R$", statLabel = "Performance", kpiData }: any) => {
-    return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="p-6 relative group">
-                    <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><TrendingUp size={48} /></div>
-                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-2">Total ({statLabel})</p>
-                    <h3 className="text-3xl font-bold text-white tracking-tight">{unit} {kpiData?.total?.toLocaleString('pt-BR') || 0}</h3>
-                    <div className="mt-2 text-xs text-emerald-400 flex items-center gap-1">Dados reais do banco</div>
-                </Card>
-
-                <Card className="p-6 relative group">
-                    <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><MessageSquare size={48} /></div>
-                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-2">Interações (30 dias)</p>
-                    <h3 className="text-3xl font-bold text-white tracking-tight">{kpiData?.interactions || 0}</h3>
-                    <div className="mt-2 text-xs text-blue-400 flex items-center gap-1">Mensagens trocadas</div>
-                </Card>
-
-                <Card className="p-6 relative group border-purple-500/20 bg-purple-500/[0.02]">
-                    <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><Bot size={48} /></div>
-                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-2">Status da IA</p>
-                    <h3 className="text-3xl font-bold text-white tracking-tight flex items-center gap-2">
-                        {kpiData?.botActive ? 'Ativo' : 'Pausado'}
-                        <span className={`w-3 h-3 rounded-full ${kpiData?.botActive ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></span>
-                    </h3>
-                    <div className="mt-2 text-xs text-zinc-400">Sistema {kpiData?.botActive ? 'Operacional' : 'Interrompido'}</div>
-                </Card>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <Card className="lg:col-span-2 p-6 flex flex-col justify-between min-h-[300px]">
-                     <div className="flex justify-between items-center mb-6">
-                        <div>
-                            <h4 className="text-white font-bold text-lg">Evolução Mensal</h4>
-                            <p className="text-zinc-500 text-xs">Histórico dos últimos 6 meses.</p>
-                        </div>
-                        <Badge color="blue">Dinâmico</Badge>
-                     </div>
-                     <div className="flex-1 w-full flex items-end gap-2 h-48 border-b border-white/5 pb-2">
-                        {loadingStats ? <div className="w-full h-full flex items-center justify-center"><Loader2 className="animate-spin text-zinc-600"/></div> : 
-                         monthlyStats.length === 0 || monthlyStats.every((s:any) => s.value === 0) ? 
-                         <div className="w-full h-full flex flex-col items-center justify-center text-zinc-600 text-xs gap-2"><TrendingUp size={24} className="opacity-20"/><span>Sem dados suficientes para o gráfico.</span></div> :
-                         monthlyStats.map((stat:any, idx:number) => {
-                             const max = Math.max(...monthlyStats.map((s:any)=>s.value)) || 1;
-                             const height = Math.max((stat.value / max) * 100, 5);
-                             return (
-                                 <div key={idx} className="flex-1 flex flex-col justify-end gap-2 group cursor-pointer">
-                                     <div className="w-full bg-zinc-800 rounded-t-sm hover:bg-blue-600 transition-all relative" style={{height: `${height}%`}}>
-                                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-zinc-700 z-10 font-mono">
-                                            {stat.value}
-                                        </div>
-                                     </div>
-                                     <span className="text-[10px] text-zinc-600 text-center font-mono uppercase truncate">{stat.label}</span>
-                                 </div>
-                             )
-                         })
-                        }
-                     </div>
-                </Card>
-
-                <Card className="flex flex-col">
-                    <div className="p-4 border-b border-white/[0.08] flex justify-between items-center bg-zinc-900/50">
-                        <span className="text-white font-bold text-sm flex items-center gap-2"><FileText size={14} className="text-zinc-500"/> Notas Internas</span>
-                        <button onClick={handleSaveNotes} disabled={isSavingNotes} className="text-xs font-bold text-blue-400 hover:text-blue-300 disabled:opacity-50">
-                            {isSavingNotes ? 'Salvando...' : 'Salvar'}
-                        </button>
-                    </div>
-                    <textarea 
-                        className="flex-1 bg-transparent p-4 text-sm text-zinc-300 resize-none outline-none placeholder:text-zinc-700 font-mono leading-relaxed" 
-                        value={notes} 
-                        onChange={e => setNotes(e.target.value)} 
-                        placeholder="Escreva observações importantes sobre este cliente aqui..." 
-                    />
-                </Card>
-            </div>
-        </div>
-    )
-}
-
-
-export const AppointmentsTab = ({appointmentsList, isRealEstate, loadingAppts}: any) => {
-    return (
-        <div className="bg-[#0F0F11] border border-white/10 rounded-xl overflow-hidden animate-in fade-in">
-            {loadingAppts ? (
-                <div className="p-12 flex flex-col items-center justify-center text-zinc-500 gap-3">
-                    <Loader2 className="animate-spin text-blue-500" size={24}/>
-                    <span className="text-xs">Carregando agendamentos...</span>
-                </div>
-            ) : (
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-zinc-900 text-zinc-500 uppercase text-xs font-bold border-b border-white/5">
-                            <tr>
-                                <th className="p-4 whitespace-nowrap"><Clock size={12} className="inline mr-1"/> Data/Hora</th>
-                                <th className="p-4"><User size={12} className="inline mr-1"/> Cliente</th>
-                                <th className="p-4">{isRealEstate ? <Home size={12} className="inline mr-1"/> : <Scissors size={12} className="inline mr-1"/>} {isRealEstate ? 'Imóvel' : 'Serviço'}</th>
-                                {isRealEstate && <th className="p-4"><MapPin size={12} className="inline mr-1"/> Bairro</th>}
-                                <th className="p-4">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                            {appointmentsList.length === 0 ? (
-                                <tr>
-                                    <td colSpan={isRealEstate ? 5 : 4} className="p-12 text-center text-zinc-600">
-                                        <Calendar className="mx-auto mb-2 opacity-50" size={24}/>
-                                        <p>Nenhum agendamento encontrado no banco de dados.</p>
-                                    </td>
-                                </tr>
-                            ) : (
-                                appointmentsList.map((a:any) => (
-                                    <tr key={a.id} className="hover:bg-white/[0.02] transition-colors">
-                                        <td className="p-4 text-zinc-300 font-mono text-xs">
-                                            {new Date(a.appointment_date).toLocaleDateString('pt-BR')} 
-                                            <span className="text-zinc-600 mx-2">|</span> 
-                                            {new Date(a.appointment_date).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}
-                                        </td>
-                                        <td className="p-4">
-                                            <div className="text-white font-bold text-sm">{a.client_name || 'Visitante'}</div>
-                                            <div className="text-[10px] text-zinc-500 font-mono">{a.customer_phone}</div>
-                                        </td>
-                                        <td className="p-4 text-zinc-400 text-sm">
-                                            {isRealEstate 
-                                                ? (a.products?.name || 'Imóvel não identificado') 
-                                                : (a.service_name || a.products?.name || 'Serviço Padrão')
-                                            }
-                                            {isRealEstate && a.products?.property_link && (
-                                                <a href={a.products.property_link} target="_blank" className="ml-2 text-blue-400 hover:underline text-[10px] bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">Link</a>
-                                            )}
-                                        </td>
-                                        {isRealEstate && <td className="p-4 text-zinc-500 text-xs">{a.products?.neighborhood || '-'}</td>}
-                                        <td className="p-4">
-                                            <Badge color={a.status==='confirmed'?'green':a.status==='canceled'?'red':'yellow'}>
-                                                {a.status === 'confirmed' ? 'Confirmado' : a.status === 'canceled' ? 'Cancelado' : 'Pendente'}
-                                            </Badge>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            )}
-        </div>
-    )
-}
 
 export const ChatTab = ({ client }: any) => {
   const [contacts, setContacts] = useState<any[]>([])
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null)
-  const [activeCustomer, setActiveCustomer] = useState<any>(null)
   const [messages, setMessages] = useState<any[]>([])
   const [inputText, setInputText] = useState('')
   const [sending, setSending] = useState(false)
@@ -206,22 +115,22 @@ export const ChatTab = ({ client }: any) => {
   }, [messages])
 
   async function fetchContacts() {
-    const { data: msgs } = await supabase.from('chat_messages').select('*').eq('organization_id', client.id).order('created_at', { ascending: false })
-    const { data: customers } = await supabase.from('customers').select('phone, is_bot_paused, name').eq('organization_id', client.id)
+    const { data } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('organization_id', client.id)
+      .order('created_at', { ascending: false })
 
-    if (msgs) {
+    if (data) {
       const uniqueMap = new Map()
-      msgs.forEach((msg: any) => {
+      data.forEach((msg: any) => {
         if (!uniqueMap.has(msg.phone)) {
-            const customerInfo = customers?.find(c => c.phone === msg.phone)
-            uniqueMap.set(msg.phone, {
-                phone: msg.phone,
-                lastMessage: msg.content,
-                date: new Date(msg.created_at),
-                name: customerInfo?.name || msg.sender_name || 'Desconhecido',
-                isBotPaused: customerInfo?.is_bot_paused || false,
-                role: msg.role
-            })
+          uniqueMap.set(msg.phone, {
+            phone: msg.phone,
+            lastMessage: msg.content,
+            date: new Date(msg.created_at),
+            name: msg.sender_name || 'Desconhecido'
+          })
         }
       })
       setContacts(Array.from(uniqueMap.values()))
@@ -230,34 +139,38 @@ export const ChatTab = ({ client }: any) => {
   }
 
   async function fetchMessages(phone: string) {
-    const { data } = await supabase.from('chat_messages').select('*').eq('organization_id', client.id).eq('phone', phone).order('created_at', { ascending: true })
+    const { data } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('organization_id', client.id)
+      .eq('phone', phone)
+      .order('created_at', { ascending: true })
+    
     if (data) setMessages(data)
-  }
-
-  async function toggleBotStatus() {
-    if (!selectedPhone) return
-    const currentStatus = activeCustomer?.isBotPaused || false
-    const newStatus = !currentStatus
-    setActiveCustomer({...activeCustomer, isBotPaused: newStatus})
-    const { error } = await supabase.from('customers').upsert({ organization_id: client.id, phone: selectedPhone, is_bot_paused: newStatus, name: activeCustomer?.name }, { onConflict: 'organization_id, phone' }).select()
-    if (error) {
-        alert("Erro ao atualizar status do bot.")
-        setActiveCustomer({...activeCustomer, isBotPaused: currentStatus})
-    } else {
-        setContacts(prev => prev.map(c => c.phone === selectedPhone ? {...c, isBotPaused: newStatus} : c))
-    }
   }
 
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault()
     if (!inputText.trim() || !selectedPhone) return
+
     setSending(true)
     const tempText = inputText
     setInputText('') 
+
     try {
-      const res = await fetch('/api/chat/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orgId: client.id, phone: selectedPhone, text: tempText }) })
+      const res = await fetch('/api/chat/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId: client.id,
+          phone: selectedPhone,
+          text: tempText
+        })
+      })
+      
       if (!res.ok) throw new Error('Falha no envio')
       await fetchMessages(selectedPhone)
+      
     } catch (error) {
       alert('Erro ao enviar mensagem')
       setInputText(tempText)
@@ -266,297 +179,419 @@ export const ChatTab = ({ client }: any) => {
     }
   }
 
-  const handleSelectContact = (contact: any) => {
-      setSelectedPhone(contact.phone)
-      setActiveCustomer(contact)
-  }
-
-  if (!client.zapi_instance_id) {
-      return (
-          <div className="h-[500px] flex flex-col items-center justify-center bg-[#0F0F11] border border-white/10 rounded-xl p-6 text-center">
-              <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mb-4 text-zinc-500"><Smartphone size={32}/></div>
-              <h3 className="text-xl font-bold text-white mb-2">WhatsApp Desconectado</h3>
-              <p className="text-zinc-400 max-w-md mb-6">Para acessar o chat em tempo real, configure a instância da Z-API na aba <strong>Configurações</strong>.</p>
-          </div>
-      )
-  }
-
   return (
-    <div className="flex h-[650px] bg-[#0F0F11] border border-white/[0.08] rounded-2xl overflow-hidden shadow-2xl animate-in fade-in">
-      <div className="w-[320px] border-r border-white/[0.08] flex flex-col bg-[#09090b]">
-        <div className="p-4 border-b border-white/[0.08]">
-          <h3 className="font-bold text-white mb-3 text-sm flex items-center gap-2"><MessageCircle size={16} className="text-blue-500"/> Conversas Recentes</h3>
-          <div className="relative group">
-            <Search className="absolute left-3 top-2.5 text-zinc-500 group-focus-within:text-blue-500 transition-colors" size={14} />
-            <input type="text" placeholder="Buscar conversa..." className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:border-blue-500/50 outline-none transition-all placeholder:text-zinc-600" />
+    <div className="flex h-[600px] bg-[#0a0a0a] border border-white/10 rounded-2xl overflow-hidden shadow-2xl animate-in fade-in slide-in-from-bottom-4">
+      <div className="w-1/3 border-r border-white/10 flex flex-col bg-[#050505]">
+        <div className="p-4 border-b border-white/10 bg-[#0a0a0a]">
+          <h3 className="font-bold text-white mb-3 flex items-center gap-2">
+            <MessageSquare size={18} className="text-blue-500"/> Conversas
+          </h3>
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 text-gray-500" size={14} />
+            <input type="text" placeholder="Buscar número..." className="w-full bg-[#111] border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:border-blue-500 outline-none" />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           {loadingContacts ? (
-            <div className="flex justify-center p-8"><Loader2 className="animate-spin text-zinc-600"/></div>
+            <div className="flex justify-center p-8"><Loader2 className="animate-spin text-blue-500"/></div>
           ) : contacts.length === 0 ? (
-            <div className="text-center p-8 text-zinc-600 text-xs">Nenhuma conversa iniciada.</div>
+            <div className="text-center p-8 text-gray-500 text-sm">Nenhuma conversa iniciada.</div>
           ) : (
             contacts.map(contact => (
-              <div key={contact.phone} onClick={() => handleSelectContact(contact)} className={`p-4 border-b border-white/[0.03] cursor-pointer hover:bg-white/[0.02] transition-all group ${selectedPhone === contact.phone ? 'bg-blue-500/[0.05] border-l-2 border-l-blue-500' : 'border-l-2 border-l-transparent'}`}>
+              <div key={contact.phone} onClick={() => setSelectedPhone(contact.phone)} className={`p-4 border-b border-white/5 cursor-pointer hover:bg-white/5 transition-colors ${selectedPhone === contact.phone ? 'bg-blue-900/20 border-l-2 border-l-blue-500' : ''}`}>
                 <div className="flex justify-between mb-1">
-                  <span className={`font-bold text-sm ${selectedPhone === contact.phone ? 'text-white' : 'text-zinc-300'}`}>{contact.name !== 'Cliente' ? contact.name : contact.phone}</span>
-                  <span className="text-[10px] text-zinc-500">{contact.date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                  <span className="font-bold text-gray-200 text-sm">{contact.name !== 'Cliente' ? contact.name : contact.phone}</span>
+                  <span className="text-[10px] text-gray-500">{contact.date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                 </div>
-                <div className="flex justify-between items-end">
-                    <p className="text-xs text-zinc-500 truncate max-w-[180px] group-hover:text-zinc-400">{contact.role === 'user' ? '👤' : '🤖'} {contact.lastMessage}</p>
-                    {contact.isBotPaused && <Badge color="yellow">Humano</Badge>}
-                </div>
+                <p className="text-xs text-gray-400 truncate max-w-[200px]">{contact.lastMessage}</p>
               </div>
             ))
           )}
         </div>
       </div>
-      <div className="flex-1 flex flex-col bg-[#0c0c0e] relative">
+      <div className="flex-1 flex flex-col bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-opacity-5">
         {selectedPhone ? (
           <>
-            <div className="p-4 bg-[#0F0F11]/90 backdrop-blur border-b border-white/[0.08] flex justify-between items-center z-10">
+            <div className="p-4 bg-[#0a0a0a]/90 backdrop-blur border-b border-white/10 flex justify-between items-center">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-zinc-700 to-zinc-800 flex items-center justify-center text-zinc-300 font-bold border border-white/5">{activeCustomer?.name?.[0] || <User size={18}/>}</div>
-                <div><h3 className="font-bold text-white text-sm">{activeCustomer?.name}</h3><p className="text-xs text-zinc-500 font-mono">{selectedPhone}</p></div>
+                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center"><User size={20} className="text-white"/></div>
+                <div><h3 className="font-bold text-white">{selectedPhone}</h3><span className="text-xs text-green-400 flex items-center gap-1">● Online via WhatsApp</span></div>
               </div>
-              <button onClick={toggleBotStatus} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${activeCustomer?.isBotPaused ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20' : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-white hover:border-zinc-600'}`}>
-                {activeCustomer?.isBotPaused ? <Play size={14} fill="currentColor"/> : <Ban size={14}/>}{activeCustomer?.isBotPaused ? 'Reativar Bot' : 'Pausar Bot'}
-              </button>
             </div>
-            {activeCustomer?.isBotPaused && (<div className="bg-amber-500/5 border-b border-amber-500/10 p-2 text-center text-xs text-amber-500 font-medium flex justify-center items-center gap-2"><ShieldAlert size={14}/> Você pausou a IA para este cliente. Responda manualmente.</div>)}
-            <div className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-95">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
               {messages.map((msg) => {
                 const isUser = msg.role === 'user'
                 return (
                   <div key={msg.id} className={`flex ${isUser ? 'justify-start' : 'justify-end'}`}>
-                    <div className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm shadow-sm relative group ${isUser ? 'bg-[#1f1f22] text-zinc-100 rounded-tl-none border border-white/5' : 'bg-[#2563eb] text-white rounded-tr-none'}`}>
-                      {!isUser && (<div className="text-[9px] font-bold mb-1 flex items-center gap-1 opacity-70"><Bot size={10}/> ZyBot AI</div>)}
-                      <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                      <span className={`text-[9px] block text-right mt-1 opacity-50 ${isUser ? 'text-zinc-500' : 'text-blue-200'}`}>{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    <div className={`max-w-[70%] rounded-2xl p-3 text-sm shadow-md relative ${isUser ? 'bg-[#202c33] text-white rounded-tl-none' : 'bg-[#005c4b] text-white rounded-tr-none'}`}>
+                      {!isUser && <div className="text-[10px] text-green-200 font-bold mb-1 flex items-center gap-1">{msg.sender_name === 'Atendente Humano' ? <User size={10}/> : <Bot size={10}/>} {msg.sender_name === 'Atendente Humano' ? 'Você' : 'Bot AI'}</div>}
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                      <span className="text-[10px] text-gray-400 block text-right mt-1 opacity-70">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     </div>
                   </div>
                 )
               })}
               <div ref={messagesEndRef} />
             </div>
-            <form onSubmit={handleSendMessage} className="p-4 bg-[#0F0F11] border-t border-white/[0.08] flex gap-3 items-center">
-              <input type="text" placeholder="Digite sua mensagem..." className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:border-blue-500/50 outline-none transition-colors placeholder:text-zinc-600" value={inputText} onChange={(e) => setInputText(e.target.value)} />
-              <button type="submit" disabled={sending || !inputText.trim()} className="bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(37,99,235,0.2)]">{sending ? <Loader2 className="animate-spin" size={20}/> : <Send size={20} />}</button>
+            <form onSubmit={handleSendMessage} className="p-4 bg-[#0a0a0a] border-t border-white/10 flex gap-2">
+              <input type="text" placeholder="Digite sua mensagem..." className="flex-1 bg-[#18181b] border border-white/10 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none transition-colors" value={inputText} onChange={(e) => setInputText(e.target.value)} />
+              <button type="submit" disabled={sending || !inputText.trim()} className="bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">{sending ? <Loader2 className="animate-spin"/> : <Send size={20} />}</button>
             </form>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 opacity-80">
-              <div className="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-6 border border-zinc-800"><MessageSquare size={32} className="text-zinc-500"/></div>
-              <p className="text-zinc-400 font-medium">Selecione um contato para visualizar</p>
-          </div>
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-500 opacity-50"><Phone size={64} className="mb-4 text-gray-700"/><p>Selecione um contato para iniciar o atendimento</p></div>
         )}
       </div>
     </div>
   )
 }
 
-
-export const SettingsTab = ({ 
-    role, botConfig, setBotConfig, syncScheduleFromDb, isSyncingSchedule, handleSaveBotConfig, 
-    isSavingBot, isEditing, setIsEditing, editForm, setEditForm, handleUpdateClient, 
-    filteredTemplates, client, openLoginModal, openPasswordModal 
-}: any) => {
-  const router = useRouter();
+export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb, isSyncingSchedule, handleSaveBotConfig, isSavingBot, isEditing, setIsEditing, editForm, setEditForm, handleUpdateClient, botCapabilities, filteredTemplates, client }: any) => {
+  const router = useRouter(); 
   
-  const [zapiForm, setZapiForm] = useState({
-      instanceId: client.zapi_instance_id || '',
-      token: client.zapi_token || '',
-      clientToken: client.zapi_client_token || ''
-  });
-  const [isSavingZapi, setIsSavingZapi] = useState(false);
-
-  const handleSaveZapiKeys = async () => {
-      if (role !== 'super_admin') return;
-      setIsSavingZapi(true);
-      const { error } = await supabase.from('organizations').update({
-          zapi_instance_id: zapiForm.instanceId,
-          zapi_token: zapiForm.token,
-          zapi_client_token: zapiForm.clientToken
-      }).eq('id', client.id);
-
-      if(error) alert("Erro: " + error.message);
-      else alert("Chaves Z-API atualizadas com sucesso!");
-      setIsSavingZapi(false);
-  }
-
-  const handleGoToQrPage = () => {
-      if (!client.zapi_instance_id && !zapiForm.instanceId) {
-          alert('ID da Instância Z-API não configurado. Contate o administrador.');
-          return;
-      }
-      router.push(`/dashboard/clients/${client.id}/code`);
-  }
-
-  const canEditPersona = botConfig.planLevel.includes('ZyCore');
+  const handleOpenQrPage = () => {
+    if (!botConfig.phoneId) {
+        alert("Defina um Nome da Instância (ID) e salve antes de conectar.");
+        return;
+    }
+    router.push(`/dashboard/clients/${client.id}/code?instance=${botConfig.phoneId}`);
+  };
 
   return (
-  <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4">
-      <div className="xl:col-span-2 space-y-6">
-          <Card className="p-0">
-             <div className="p-6 border-b border-white/[0.08] bg-zinc-900/30">
-                 <h3 className="font-bold text-lg text-white flex items-center gap-2"><Bot className="text-blue-500"/> Inteligência Artificial (ZyBot)</h3>
-                 <p className="text-zinc-500 text-xs mt-1">Configure o comportamento e o conhecimento do seu assistente.</p>
-             </div>
-             
-             <div className="p-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Status do Bot</label>
-                        <div className="flex items-center justify-between bg-[#18181b] border border-white/10 rounded-lg p-2.5">
-                            <div className="flex items-center gap-3">
-                                <button onClick={() => setBotConfig({...botConfig, isActive: !botConfig.isActive})} className={`relative w-12 h-6 rounded-full transition-all duration-300 ${botConfig.isActive ? 'bg-emerald-500' : 'bg-zinc-700'}`}>
-                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 shadow-sm ${botConfig.isActive ? 'left-7' : 'left-1'}`}></div>
-                                </button>
-                                <span className={`text-sm font-medium ${botConfig.isActive ? 'text-emerald-400' : 'text-zinc-500'}`}>{botConfig.isActive ? 'Ativo' : 'Inativo'}</span>
-                            </div>
-                            
-                            <button onClick={handleGoToQrPage} className="text-[10px] bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded flex items-center gap-1 font-bold transition-all">
-                                <Smartphone size={12}/> Logar com WhatsApp
-                            </button>
-                        </div>
-                    </div>
-                    {role === 'super_admin' && (
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Template de Nicho</label>
-                            <select 
-                                className="w-full bg-[#18181b] border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500/50" 
-                                value={botConfig.template} 
-                                onChange={e => setBotConfig({...botConfig, template: e.target.value})}
-                            >
-                                <option value="">Selecione...</option>
-                                {filteredTemplates.map((t:any) => (<option key={t.id} value={t.id}>{t.label}</option>))}
-                                <option value="imobiliaria_basico">Imobiliária (Padrão)</option>
-                            </select>
-                        </div>
-                    )}
-                </div>
-
-                <div className="border-t border-white/[0.05] my-2"></div>
-
-                <div className="space-y-5">
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1"><HelpCircle size={12}/> Perguntas Frequentes (FAQ)</label>
-                        <textarea 
-                            className="w-full bg-[#18181b] border border-white/10 rounded-lg p-3 text-zinc-300 text-sm focus:border-blue-500/50 font-mono min-h-[100px]" 
-                            placeholder="Ex: Qual o horário de almoço? R: Das 12h às 13h."
-                            value={botConfig.aiFaq} 
-                            onChange={e => setBotConfig({...botConfig, aiFaq: e.target.value})} 
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1"><Clock size={12}/> Horários de Atendimento</label>
-                            <button onClick={syncScheduleFromDb} disabled={isSyncingSchedule} className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20">{isSyncingSchedule ? <RefreshCcw size={10} className="animate-spin"/> : 'Sincronizar da Agenda'}</button>
-                        </div>
-                        <input 
-                            type="text" 
-                            className="w-full bg-[#18181b] border border-white/10 rounded-lg p-2.5 text-zinc-300 text-sm focus:border-blue-500/50" 
-                            value={botConfig.openingHours} 
-                            onChange={e => setBotConfig({...botConfig, openingHours: e.target.value})} 
-                        />
-                    </div>
-
-                    {(canEditPersona || role === 'super_admin') && (
-                        <div className="space-y-2 pt-2">
-                            <label className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1"><Brain size={12}/> Personalidade (Persona)</label>
-                            <textarea 
-                                className="w-full bg-purple-500/[0.03] border border-purple-500/20 rounded-lg p-3 text-zinc-300 text-sm focus:border-purple-500/50 font-mono" 
-                                rows={2}
-                                placeholder="Comportamento da IA..."
-                                value={botConfig.aiPersona} 
-                                onChange={e => setBotConfig({...botConfig, aiPersona: e.target.value})} 
-                            />
-                        </div>
-                    )}
-                </div>
-
-                <div className="pt-4">
-                    <button onClick={handleSaveBotConfig} disabled={isSavingBot} className="bg-white text-black hover:bg-zinc-200 px-6 py-2.5 rounded-lg font-bold text-sm flex items-center gap-2 transition-all disabled:opacity-50">
-                        {isSavingBot ? <Loader2 size={16} className="animate-spin"/> : <Save size={16}/>} Salvar Configurações
-                    </button>
-                </div>
-             </div>
-          </Card>
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
+          <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+              <div><h3 className="font-bold text-lg flex items-center gap-2 text-white"><Bot className="text-purple-500" size={20}/> Bot Intelligence</h3><p className="text-xs text-gray-500 mt-1">Configuração da IA e conexão WhatsApp</p></div>
+              {role === 'super_admin' && (<button onClick={() => setBotConfig({...botConfig, isActive: !botConfig.isActive})} className={`relative w-11 h-6 rounded-full transition-all duration-300 ${botConfig.isActive ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-gray-700'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 shadow-sm ${botConfig.isActive ? 'left-6' : 'left-1'}`}></div></button>)}
+          </div>
+          <div className="p-6 space-y-6">
+              <div className="space-y-4">
+                  {role === 'super_admin' ? (
+                      <>
+                          <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Plano</label><select className="w-full bg-[#050505] border border-white/10 rounded-lg p-2.5 text-white text-sm focus:border-purple-500 outline-none" value={botConfig.planLevel} onChange={e => setBotConfig({...botConfig, planLevel: e.target.value})}><option value="ZyStart">ZyStart</option><option value="ZyControl">ZyControl</option><option value="ZyBotAI">ZyBotAI</option><option value="ZyCore">ZyCore</option></select></div>
+                              <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Template</label><select className="w-full bg-[#050505] border border-white/10 rounded-lg p-2.5 text-white text-sm focus:border-purple-500 outline-none" value={botConfig.template} onChange={e => setBotConfig({...botConfig, template: e.target.value})}>{filteredTemplates.length > 0 ? filteredTemplates.map((t:any) => (<option key={t.id} value={t.id}>{t.label}</option>)) : (<option value="">Sem template</option>)}</select></div>
+                          </div>
+                          <div className="space-y-1"><label className="text-[10px] font-bold text-yellow-500 uppercase flex items-center gap-1"><Sparkles size={10}/> Prompt Mestre (Admin)</label><textarea className="w-full bg-[#050505] border border-yellow-500/20 rounded-lg p-3 text-gray-300 text-sm focus:border-yellow-500/50 font-mono" rows={3} value={botConfig.aiPersona} onChange={e => setBotConfig({...botConfig, aiPersona: e.target.value})} /></div>
+                          <div className="space-y-1"><div className="flex justify-between"><label className="text-[10px] font-bold text-blue-400 uppercase">Contexto: Horários</label><button onClick={syncScheduleFromDb} disabled={isSyncingSchedule} className="text-[10px] text-gray-500 hover:text-white flex items-center gap-1">{isSyncingSchedule ? <RefreshCcw size={10} className="animate-spin"/> : 'Sincronizar'}</button></div><input type="text" className="w-full bg-[#050505] border border-blue-500/20 rounded-lg p-2.5 text-gray-300 text-sm focus:border-blue-500/50" value={botConfig.openingHours} onChange={e => setBotConfig({...botConfig, openingHours: e.target.value})} /></div>
+                          
+                          <div className="pt-4 border-t border-white/5 space-y-4 bg-white/[0.02] p-4 rounded-xl border border-white/5">
+                              <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-green-500 uppercase flex items-center gap-1"><Smartphone size={12}/> Nome da Instância (ID)</label>
+                                  <input placeholder="Ex: imobiliaria_clientzy_01" className="w-full bg-[#050505] border border-white/10 rounded-lg p-2 text-xs font-mono text-gray-400 focus:border-green-500 outline-none" value={botConfig.phoneId} onChange={e => setBotConfig({...botConfig, phoneId: e.target.value})} />
+                                  <p className="text-[9px] text-gray-500">Este ID cria a conexão na VPS.</p>
+                              </div>
+                              
+                              <div className="pt-2">
+                                  <button 
+                                    type="button"
+                                    onClick={handleOpenQrPage}
+                                    disabled={!botConfig.phoneId}
+                                    className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-green-900/20 disabled:opacity-50"
+                                  >
+                                      <QrCode size={16}/> Abrir Conexão WhatsApp (QR Code)
+                                      <ArrowUpRight size={14} className="opacity-70" />
+                                  </button>
+                                  <p className="text-[9px] text-center text-gray-500 mt-2">Isso abrirá uma tela segura para leitura do código.</p>
+                              </div>
+                              
+                              <div className="hidden">
+                                  <input type="password" value={botConfig.accessToken} onChange={e => setBotConfig({...botConfig, accessToken: e.target.value})} />
+                              </div>
+                          </div>
+                      </>
+                  ) : <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-sm text-green-400 flex items-center gap-2"><CheckCircle size={16}/> Configuração gerenciada pela Zytech.</div>}
+                  
+                  <div className="space-y-1 mt-4"><label className="text-[10px] font-bold text-cyan-500 uppercase flex items-center gap-1"><HelpCircle size={10}/> Perguntas Frequentes (FAQ)</label><textarea className="w-full bg-[#050505] border border-cyan-500/20 rounded-lg p-3 text-gray-300 text-sm focus:border-cyan-500/50 font-mono" rows={3} placeholder="Ex: Aceitamos fiador? Sim." value={botConfig.aiFaq} onChange={e => setBotConfig({...botConfig, aiFaq: e.target.value})} /></div>
+                  <button onClick={handleSaveBotConfig} disabled={isSavingBot} className="w-full bg-white/5 hover:bg-white/10 text-white border border-white/10 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all">{isSavingBot ? 'Salvando...' : <><Save size={16}/> Salvar Configuração</>}</button>
+              </div>
+          </div>
       </div>
       
-      <div className="space-y-6">
-          {role === 'super_admin' && (
-              <>
-                <Card className="border-red-500/20 bg-red-500/[0.02]">
-                    <div className="p-4 border-b border-red-500/10 flex items-center gap-2"><ShieldAlert size={16} className="text-red-500"/><h3 className="font-bold text-sm text-white">Conexão Z-API (Admin)</h3></div>
-                    <div className="p-4 space-y-4">
-                        <div className="space-y-1"><label className="text-[10px] text-red-300 uppercase font-bold">Instance ID</label><input className="w-full bg-[#0F0F11] border border-red-500/20 rounded px-2 py-1.5 text-xs text-zinc-300 font-mono" value={zapiForm.instanceId} onChange={e => setZapiForm({...zapiForm, instanceId: e.target.value})} /></div>
-                        <div className="space-y-1"><label className="text-[10px] text-red-300 uppercase font-bold">Instance Token</label><input type="password" className="w-full bg-[#0F0F11] border border-red-500/20 rounded px-2 py-1.5 text-xs text-zinc-300 font-mono" value={zapiForm.token} onChange={e => setZapiForm({...zapiForm, token: e.target.value})} /></div>
-                        <div className="space-y-1"><label className="text-[10px] text-red-300 uppercase font-bold">Client Token</label><input type="password" className="w-full bg-[#0F0F11] border border-red-500/20 rounded px-2 py-1.5 text-xs text-zinc-300 font-mono" value={zapiForm.clientToken} onChange={e => setZapiForm({...zapiForm, clientToken: e.target.value})} /></div>
-                        <button onClick={handleSaveZapiKeys} disabled={isSavingZapi} className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 py-2 rounded text-xs font-bold transition-all">{isSavingZapi ? 'Salvando...' : 'Atualizar Credenciais'}</button>
-                    </div>
-                </Card>
-                
-                <Card className="border-purple-500/20 bg-purple-500/[0.02]">
-                     <div className="p-4 border-b border-purple-500/10 flex items-center gap-2"><Key size={16} className="text-purple-500"/><h3 className="font-bold text-sm text-white">Acesso & Segurança</h3></div>
-                     <div className="p-4 flex gap-2">
-                        <button onClick={openLoginModal} className="flex-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2"><UserPlus size={14}/> Gerar Acesso</button>
-                        <button onClick={openPasswordModal} className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2"><Lock size={14}/> Redefinir Senha</button>
-                     </div>
-                </Card>
-              </>
-          )}
-
-          <Card>
-              <div className="p-4 border-b border-white/[0.08] flex justify-between items-center">
-                  <h3 className="font-bold text-sm text-white flex items-center gap-2"><Briefcase size={16} className="text-zinc-500"/> Contrato</h3>
-                  {role === 'super_admin' && <button onClick={() => setIsEditing(!isEditing)} className="text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase">{isEditing ? 'Cancelar' : 'Editar'}</button>}
+      <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl h-fit">
+          <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+              <div><h3 className="font-bold text-lg flex items-center gap-2 text-white"><Briefcase size={20} className="text-blue-500"/> Contrato</h3><p className="text-xs text-gray-500 mt-1">Detalhes de faturamento e plano.</p></div>
+              {role === 'super_admin' && <button onClick={() => setIsEditing(!isEditing)} className="text-blue-400 text-xs font-bold hover:text-blue-300 uppercase tracking-wider border border-blue-500/30 px-3 py-1 rounded-lg hover:bg-blue-500/10 transition-all">{isEditing ? 'Cancelar Edição' : 'Editar Dados'}</button>}
+          </div>
+          <form onSubmit={handleUpdateClient} className="p-6 space-y-5">
+              <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Nome da Empresa</label><input type="text" disabled={!isEditing} className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-white text-sm disabled:opacity-50 focus:border-blue-500 outline-none" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})}/></div>
+              <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Plano</label><select disabled={!isEditing} className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-white text-sm disabled:opacity-50 outline-none" value={editForm.plan} onChange={e => { setEditForm({...editForm, plan: e.target.value}); setBotConfig((prev:any) => ({...prev, planLevel: e.target.value})) }}><option value="ZyStart">ZyStart</option><option value="ZyControl">ZyControl</option><option value="ZyBotAI">ZyBotAI</option><option value="ZyCore">ZyCore</option></select></div>
+                  <div className="space-y-1"><label className="text-[10px] font-bold text-green-500 uppercase">Valor (R$)</label><input type="text" disabled={!isEditing} className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-white text-sm disabled:opacity-50 focus:border-green-500 outline-none font-mono" value={editForm.value} onChange={e => setEditForm({...editForm, value: e.target.value})}/></div>
               </div>
-              <form onSubmit={handleUpdateClient} className="p-4 space-y-4">
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Empresa</label>
-                        <input disabled={!isEditing} className="w-full bg-[#18181b] border border-white/10 rounded px-3 py-2 text-sm text-white disabled:opacity-50" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})}/>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Plano</label>
-                            <select disabled={!isEditing} className="w-full bg-[#18181b] border border-white/10 rounded px-3 py-2 text-sm text-white disabled:opacity-50" value={editForm.plan} onChange={e => { setEditForm({...editForm, plan: e.target.value}); setBotConfig((prev:any) => ({...prev, planLevel: e.target.value})) }}>
-                                <option value="ZyStart">ZyStart</option><option value="ZyControl">ZyControl</option><option value="ZyBotAI">ZyBotAI</option><option value="ZyCore">ZyCore</option>
-                            </select>
-                        </div>
-                        <div className="space-y-1">
-                             <label className="text-[10px] font-bold text-zinc-500 uppercase">Valor (R$)</label>
-                             <input disabled={!isEditing} className="w-full bg-[#18181b] border border-white/10 rounded px-3 py-2 text-sm text-emerald-400 font-mono disabled:opacity-50" value={editForm.value} onChange={e => setEditForm({...editForm, value: e.target.value})}/>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Ciclo</label>
-                            <select disabled={!isEditing} className="w-full bg-[#18181b] border border-white/10 rounded px-3 py-2 text-sm text-white disabled:opacity-50" value={editForm.cycle} onChange={e => setEditForm({...editForm, cycle: e.target.value})}>
-                                <option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option>
-                            </select>
-                         </div>
-                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Vencimento</label>
-                            <input type="date" disabled={!isEditing} className="w-full bg-[#18181b] border border-white/10 rounded px-3 py-2 text-sm text-white disabled:opacity-50" value={editForm.valid_until} onChange={e => setEditForm({...editForm, valid_until: e.target.value})}/>
-                         </div>
-                    </div>
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Pagamento</label>
-                        <select disabled={!isEditing} className="w-full bg-[#18181b] border border-white/10 rounded px-3 py-2 text-sm text-white disabled:opacity-50" value={editForm.payment_method} onChange={e => setEditForm({...editForm, payment_method: e.target.value})}>
-                            <option value="pix">PIX</option><option value="boleto">Boleto</option><option value="cartao">Cartão de Crédito</option>
-                        </select>
-                    </div>
-                    {isEditing && <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded text-xs font-bold">Salvar Contrato</button>}
-              </form>
-          </Card>
+              <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Ciclo</label><select disabled={!isEditing} className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-white text-sm disabled:opacity-50 outline-none" value={editForm.cycle} onChange={e => setEditForm({...editForm, cycle: e.target.value})}><option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option><option value="unico">Único</option></select></div>
+                  <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Vencimento</label><input type="date" disabled={!isEditing} className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-white text-sm disabled:opacity-50 outline-none text-gray-400" value={editForm.valid_until} onChange={e => setEditForm({...editForm, valid_until: e.target.value})}/></div>
+              </div>
+              {role === 'super_admin' && isEditing && <div className="pt-4 flex justify-end"><button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-[0_0_20px_rgba(37,99,235,0.3)] transition-all"><Save size={18}/> Salvar Alterações</button></div>}
+          </form>
       </div>
   </div>
   )
 }
 
-export const NotificationsTab = ({ notifications, markAsRead, loadingNotifications, fetchNotifications }: any) => ( <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in"> <div className="flex justify-between items-center mb-4"><h3 className="text-white font-bold text-lg">Notificações</h3><button onClick={fetchNotifications} className="text-zinc-500 hover:text-white"><RefreshCcw size={16}/></button></div> {loadingNotifications ? <div className="text-center text-zinc-600 py-10">Carregando...</div> : notifications.length === 0 ? <div className="text-center py-10 border border-dashed border-white/10 rounded-xl"><Bell className="mx-auto mb-2 text-zinc-700"/><p className="text-zinc-500 text-sm">Nenhuma notificação.</p></div> : notifications.map((n:any) => ( <div key={n.id} className="bg-[#0F0F11] border border-white/10 p-4 rounded-xl flex gap-4"> <div className="text-red-500 mt-1"><Bell size={16}/></div> <div className="flex-1"> <p className="text-sm text-zinc-200">{n.content}</p> <div className="flex gap-4 mt-2"><button onClick={()=>markAsRead(n.id)} className="text-xs text-blue-400 font-bold">Marcar como lido</button></div> </div> </div> )) } </div> )
-export const CatalogTab = ({ client, isRealEstate, products, setIsProductModalOpen, labels, toggleProductStatus, handleDeleteProduct }: any) => ( <div className="space-y-6 animate-in fade-in"> <div className="flex justify-between items-center"> <h2 className="text-xl font-bold text-white">{isRealEstate ? 'Imóveis' : 'Catálogo'}</h2> <button onClick={() => setIsProductModalOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"><Plus size={16}/> {labels.add}</button> </div> <div className="grid grid-cols-1 md:grid-cols-3 gap-4"> {products.map((p:any) => ( <div key={p.id} className="bg-[#0F0F11] border border-white/10 p-4 rounded-xl group hover:border-blue-500/30 transition-all"> <div className="flex justify-between items-start mb-2"> <Badge color="gray">{p.category}</Badge> <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={()=>toggleProductStatus(p)} className="text-zinc-500 hover:text-emerald-500"><Power size={16}/></button><button onClick={()=>handleDeleteProduct(p.id)} className="text-zinc-500 hover:text-red-500"><Trash2 size={16}/></button></div> </div> <h4 className="font-bold text-white truncate">{p.name}</h4> <p className="text-emerald-400 font-mono text-sm mt-1">R$ {p.price}</p> </div> ))} </div> </div> )
-export const OrdersTab = ({ clientOrders, handleAdvanceStatus, handleCancelOrder }: any) => ( <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in"> {clientOrders.map((o:any) => ( <div key={o.id} className="bg-[#0F0F11] border border-white/10 p-5 rounded-xl flex flex-col justify-between"> <div> <div className="flex justify-between items-start mb-3"><h4 className="font-bold text-white">{o.customer_name}</h4><Badge color="blue">{o.status}</Badge></div> <div className="space-y-1 mb-4">{Array.isArray(o.items_json) && o.items_json.map((i:any, idx:number)=>(<div key={idx} className="flex justify-between text-xs text-zinc-300"><span>{i.qty}x {i.name}</span><span>R$ {i.price}</span></div>))}</div> </div> <div className="pt-4 border-t border-white/5 flex gap-2"><button onClick={()=>handleAdvanceStatus(o)} className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-xs font-bold">Avançar</button></div> </div> ))} </div> )
+export const CategoriesTab = ({ customCategories, newCategoryInput, setNewCategoryInput, handleAddCategory, handleRemoveCategory, handleSaveCategories, isSavingCategories }: any) => (
+  <div className="max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4">
+      <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl p-6">
+          <h3 className="font-bold text-lg text-white mb-4 flex items-center gap-2"><List size={18} className="text-orange-500"/> Gestão de Categorias</h3>
+          <p className="text-xs text-gray-400 mb-6">Defina as categorias de produtos/serviços que o seu bot vai oferecer.</p>
+          
+          <div className="flex flex-wrap gap-2 mb-6">
+              {customCategories.length === 0 && <span className="text-gray-500 text-sm italic">Nenhuma categoria cadastrada.</span>}
+              {customCategories.map((cat: string) => (
+                  <div key={cat} className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 flex items-center gap-2 group hover:bg-white/10 transition-colors">
+                      <span className="text-sm font-medium text-gray-300">{cat}</span>
+                      <button onClick={() => handleRemoveCategory(cat)} className="text-gray-500 hover:text-red-400"><X size={14}/></button>
+                  </div>
+              ))}
+          </div>
+
+          <form onSubmit={handleAddCategory} className="flex gap-2 border-t border-white/5 pt-4">
+              <input 
+                  type="text" 
+                  placeholder="Nova categoria..." 
+                  className="flex-1 bg-[#050505] border border-white/10 rounded-xl px-4 py-3 text-white outline-none focus:border-orange-500/50 transition-colors text-sm" 
+                  value={newCategoryInput} 
+                  onChange={e => setNewCategoryInput(e.target.value)} 
+              />
+              <button type="submit" className="bg-orange-600 hover:bg-orange-500 text-white px-5 rounded-xl font-bold transition-all"><Plus size={20}/></button>
+          </form>
+          
+          <div className="mt-4 flex justify-end">
+              <button onClick={handleSaveCategories} disabled={isSavingCategories} className="text-blue-400 font-bold text-xs hover:text-blue-300 transition-colors disabled:opacity-50">
+                  {isSavingCategories ? 'Salvando...' : 'Salvar Alterações'}
+              </button>
+          </div>
+      </div>
+  </div>
+)
+
+export const NotificationsTab = ({ notifications, markAsRead, loadingNotifications, fetchNotifications }: any) => (
+  <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4">
+      <div className="flex justify-between items-center mb-6">
+          <div>
+            <h3 className="text-2xl font-bold text-white flex items-center gap-2"><Bell className="text-red-500" /> Central de Alertas</h3>
+            <p className="text-sm text-gray-400 mt-1">Solicitações de atendimento humano e avisos importantes.</p>
+          </div>
+          <button onClick={fetchNotifications} className="p-2 bg-white/5 rounded-lg hover:bg-white/10"><RefreshCcw size={16}/></button>
+      </div>
+      
+      <div className="space-y-3">
+          {loadingNotifications ? (
+              <div className="p-10 text-center text-gray-500">Carregando notificações...</div>
+          ) : notifications.length === 0 ? (
+              <div className="p-10 text-center border border-dashed border-white/10 rounded-2xl bg-white/[0.01]">
+                  <CheckCircle size={32} className="mx-auto text-green-500 mb-2 opacity-50"/>
+                  <p className="text-gray-400">Tudo limpo! Nenhuma pendência.</p>
+              </div>
+          ) : (
+              notifications.map((notif:any) => (
+                  <div key={notif.id} className={`p-4 rounded-xl border flex gap-4 transition-all ${notif.is_read ? 'bg-[#0a0a0a] border-white/5 opacity-60' : 'bg-red-900/10 border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.1)]'}`}>
+                      <div className={`mt-1 p-2 rounded-full h-fit ${notif.is_read ? 'bg-gray-800 text-gray-500' : 'bg-red-500 text-white'}`}>
+                          {notif.type === 'human_request' ? <UserPlus size={16}/> : <Bell size={16}/>}
+                      </div>
+                      <div className="flex-1">
+                          <div className="flex justify-between items-start">
+                              <h4 className={`font-bold text-sm ${notif.is_read ? 'text-gray-400' : 'text-white'}`}>{notif.customer_name || notif.customer_phone}</h4>
+                              <span className="text-[10px] text-gray-500 font-mono">{new Date(notif.created_at).toLocaleString('pt-BR')}</span>
+                          </div>
+                          <p className="text-sm text-gray-300 mt-1">{notif.content}</p>
+                          <div className="flex gap-4 mt-3">
+                              <a href={`https://wa.me/${notif.customer_phone}`} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-green-400 hover:underline flex items-center gap-1"><Phone size={12}/> Chamar no WhatsApp</a>
+                              {!notif.is_read && <button onClick={() => markAsRead(notif.id)} className="text-xs font-bold text-gray-500 hover:text-white flex items-center gap-1"><CheckCircle size={12}/> Marcar como resolvido</button>}
+                          </div>
+                      </div>
+                  </div>
+              ))
+          )}
+      </div>
+  </div>
+)
+
+export const CatalogTab = ({ client, isRealEstate, isServiceType, products, setIsProductModalOpen, labels, toggleProductStatus, handleDeleteProduct, handleEditProduct }: any) => (
+  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex justify-between items-end">
+          <div>
+              <h2 className="text-2xl font-bold flex items-center gap-2 text-white">
+                  {isRealEstate ? <Home className="text-indigo-500"/> : isServiceType ? <Scissors className="text-purple-500"/> : <Package className="text-blue-500"/>} 
+                  {isRealEstate ? 'Carteira de Imóveis' : 'Itens do Bot'}
+              </h2>
+              <p className="text-gray-400 text-sm mt-1">{isRealEstate ? 'Gerencie os imóveis disponíveis para venda ou aluguel.' : 'Gerencie os produtos/serviços que o bot oferece.'}</p>
+          </div>
+          <button onClick={() => setIsProductModalOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-[0_0_15px_rgba(37,99,235,0.3)] transition-all">
+              <Plus size={18}/> {labels.add}
+          </button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {products.length === 0 && <div className="col-span-full py-16 text-center border border-dashed border-white/10 rounded-2xl bg-white/[0.01]"><p className="text-gray-500">Nenhum {isRealEstate ? 'imóvel' : 'item'} cadastrado.</p></div>}
+          {products.map((prod:any) => (
+              <div key={prod.id} className={`group bg-[#0a0a0a]/50 backdrop-blur-sm border rounded-2xl p-5 flex justify-between transition-all hover:border-blue-500/30 hover:bg-white/[0.03] ${prod.is_available ? 'border-white/10' : 'border-red-900/20 opacity-60'}`}>
+                  <div>
+                      <div className="flex items-center gap-2 mb-2">
+                          <span className="text-[10px] font-bold uppercase bg-white/10 px-2 py-0.5 rounded text-gray-300 border border-white/5">{prod.category}</span>
+                          {!isRealEstate && prod.track_stock && <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${prod.stock_quantity > 0 ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>{prod.stock_quantity} un.</span>}
+                      </div>
+                      <h4 className="font-bold text-white text-lg">{prod.name}</h4>
+                      {isRealEstate ? (
+                          <div className="mt-2 space-y-1">
+                              <p className="text-gray-400 text-xs flex items-center gap-1"><MapPin size={12}/> {prod.neighborhood || 'Bairro não inf.'}</p>
+                              <p className="text-green-400 font-mono font-bold">R$ {prod.price}</p>
+                          </div>
+                      ) : <p className="text-green-400 font-mono mt-1">R$ {prod.price}</p>}
+                  </div>
+                  <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => handleEditProduct(prod)} className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors" title="Editar"><Edit size={18}/></button>
+                      <button onClick={() => toggleProductStatus(prod)} className={`p-2 rounded-lg transition-colors ${prod.is_available ? 'text-green-500 hover:bg-green-500/10' : 'text-gray-500 hover:bg-gray-500/10'}`} title={prod.is_available ? "Ativo" : "Inativo"}><Power size={18}/></button>
+                      <button onClick={() => handleDeleteProduct(prod.id)} className="p-2 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                  </div>
+              </div>
+          ))}
+      </div>
+  </div>
+)
+
+export const AppointmentsTab = ({ client, loadingAppts, apptFilter, setApptFilter, appointmentsList, isRealEstate, router }: any) => (
+  <div className="animate-in fade-in slide-in-from-bottom-2 space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <h3 className="text-xl font-bold flex items-center gap-2 text-white"><Calendar className="text-purple-500" /> Agendamentos</h3>
+          <button onClick={() => router.push(`/dashboard/appointments?orgId=${client.id}`)} className="bg-purple-600 hover:bg-purple-500 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 transition-all shadow-lg shadow-purple-900/20"><ExternalLink size={18} /> Gerenciar Agenda Completa</button>
+      </div>
+      {client.plan.includes('ZyStart') && (<div className="p-4 bg-blue-900/10 border border-blue-500/20 rounded-lg flex items-center gap-3 text-sm text-blue-300"><MessageCircle size={18} /><span>No plano ZyStart, os agendamentos são recebidos exclusivamente via WhatsApp e sincronizados aqui.</span></div>)}
+      <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-2xl">
+          <div className="p-4 border-b border-white/5 flex flex-wrap gap-2 bg-white/[0.02]">
+              <span className="flex items-center text-gray-500 text-sm font-bold mr-2"><Filter size={14} className="mr-1"/> Filtros:</span>
+              {[{ id: 'today', label: 'Hoje' }, { id: 'week', label: 'Esta Semana' }, { id: 'month', label: 'Este Mês' }, { id: 'year', label: 'Este Ano' }, { id: 'all', label: 'Histórico Completo' }].map(f => (
+                  <button key={f.id} onClick={() => setApptFilter(f.id)} className={`px-3 py-1 rounded text-xs font-bold transition-colors ${apptFilter === f.id ? 'bg-purple-600 text-white' : 'bg-white/5 text-gray-400 hover:text-white'}`}>{f.label}</button>
+              ))}
+          </div>
+          {loadingAppts ? (
+              <div className="p-10 text-center text-gray-500 italic animate-pulse">Carregando agendamentos...</div>
+          ) : (
+              <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                      <thead className="bg-white/5 text-gray-400 border-b border-white/5 uppercase text-xs">
+                          <tr>
+                              <th className="p-4"><Clock size={14} className="inline mr-1"/> Data/Hora</th>
+                              <th className="p-4"><User size={14} className="inline mr-1"/> Cliente</th>
+                              {isRealEstate ? (
+                                  <>
+                                      <th className="p-4"><Home size={14} className="inline mr-1"/> Imóvel</th>
+                                      <th className="p-4"><MapPin size={14} className="inline mr-1"/> Bairro</th>
+                                      <th className="p-4"><LinkIcon size={14} className="inline mr-1"/> Link</th>
+                                  </>
+                              ) : (
+                                  <th className="p-4"><Scissors size={14} className="inline mr-1"/> Serviço</th>
+                              )}
+                              <th className="p-4">Status</th>
+                          </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                          {appointmentsList.length > 0 ? appointmentsList.map((appt:any) => (
+                              <tr key={appt.id} className="hover:bg-white/[0.03] transition-colors">
+                                  <td className="p-4 font-mono text-gray-300">{new Date(appt.appointment_date).toLocaleDateString('pt-BR')} <span className="text-gray-500">às</span> {new Date(appt.appointment_date).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</td>
+                                  <td className="p-4">
+                                      <div className="font-bold text-white">{appt.client_name || appt.customer_phone || 'Cliente sem nome'}</div>
+                                      <div className="text-xs text-gray-500">{appt.customer_phone}</div>
+                                  </td>
+                                  {isRealEstate ? (
+                                      <>
+                                          <td className="p-4 text-gray-300">{appt.products?.name || appt.service_name || '-'}</td>
+                                          <td className="p-4 text-gray-400 text-xs">{appt.products?.neighborhood || '-'}</td>
+                                          <td className="p-4">
+                                              {appt.products?.property_link ? (
+                                                  <a href={appt.products.property_link} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline text-xs">Ver Imóvel</a>
+                                              ) : <span className="text-gray-600 text-xs">-</span>}
+                                          </td>
+                                      </>
+                                  ) : (
+                                      <td className="p-4 text-gray-300">{appt.service_name || '-'}</td>
+                                  )}
+                                  <td className="p-4"><span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${appt.status === 'confirmed' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : appt.status === 'canceled' ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'}`}>{appt.status === 'confirmed' ? 'Confirmado' : appt.status === 'canceled' ? 'Cancelado' : 'Pendente'}</span></td>
+                              </tr>
+                          )) : (<tr><td colSpan={isRealEstate ? 6 : 4} className="p-8 text-center text-gray-500">Nenhum agendamento encontrado para este período.</td></tr>)}
+                      </tbody>
+                  </table>
+              </div>
+          )}
+      </div>
+  </div>
+)
+
+export const OrdersTab = ({ isServiceType, fetchClientOrders, clientOrders, handleAdvanceStatus, handleCancelOrder, client }: any) => {
+    const getStatusStyle = (status: string) => {
+      switch(status) {
+        case 'pending': return { color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20', shadow: 'shadow-yellow-500/10', label: 'Pendente', icon: Clock }
+        case 'preparing': return { color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', shadow: 'shadow-blue-500/10', label: 'Preparando', icon: ChefHat }
+        case 'delivery': return { color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20', shadow: 'shadow-purple-500/10', label: 'Em Rota', icon: Truck }
+        case 'finished': return { color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/20', shadow: 'shadow-green-500/10', label: 'Entregue', icon: CheckCircle }
+        case 'canceled': return { color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20', shadow: 'shadow-red-500/10', label: 'Cancelado', icon: XCircle }
+        default: return { color: 'text-gray-400', bg: 'bg-gray-500/10', border: 'border-gray-500/20', shadow: 'shadow-none', label: status, icon: Package }
+      }
+    }
+
+    return (
+        <div className="animate-in fade-in slide-in-from-bottom-2 space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-end">
+                <div>
+                    <h3 className="text-xl font-bold mb-1 flex items-center gap-2 text-white">
+                        {isServiceType ? <Scissors className="text-purple-500"/> : <ShoppingCart className="text-blue-500"/>} 
+                        {isServiceType ? ' Serviços Realizados' : ' Gestão de Pedidos'}
+                    </h3>
+                    <p className="text-gray-400 text-sm">Acompanhe o status e gerencie entregas.</p>
+                </div>
+                <button onClick={fetchClientOrders} className="bg-white/5 border border-white/10 hover:bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all">
+                    <RefreshCcw size={16}/> Atualizar
+                </button>
+            </div>
+
+            {clientOrders.length === 0 ? (
+                <div className="col-span-full py-16 text-center border border-dashed border-white/10 rounded-2xl bg-white/[0.01]">
+                    <Package size={48} className="mx-auto text-gray-600 mb-4"/>
+                    <p className="text-gray-500">Nenhum pedido registrado ainda.</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {clientOrders.map((order:any) => {
+                        const statusStyle = getStatusStyle(order.status)
+                        const StatusIcon = statusStyle.icon
+                        return (
+                            <div key={order.id} className={`bg-[#0a0a0a]/60 backdrop-blur-md border rounded-2xl overflow-hidden transition-all duration-300 group hover:-translate-y-1 shadow-xl ${order.status === 'canceled' ? 'border-red-900/20 opacity-60 grayscale-[0.5]' : 'border-white/10 hover:border-blue-500/30'}`}>
+                                <div className="p-5 border-b border-white/5 flex justify-between items-start bg-white/[0.02]">
+                                    <div>
+                                        <h3 className="font-bold text-white text-lg truncate w-40 tracking-tight" title={order.customer_name}>{order.customer_name}</h3>
+                                        <p className="text-xs text-gray-400 flex items-center gap-1.5 mt-1 font-mono"><Clock size={12} className="text-blue-500"/> {new Date(order.created_at).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</p>
+                                    </div>
+                                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase border flex items-center gap-1.5 shadow-lg ${statusStyle.bg} ${statusStyle.color} ${statusStyle.border} ${statusStyle.shadow}`}><StatusIcon size={12} /> {statusStyle.label}</span>
+                                </div>
+                                <div className="p-5 min-h-[100px] bg-gradient-to-b from-transparent to-black/20">
+                                    <ul className="space-y-2 text-sm">
+                                        {Array.isArray(order.items_json) && order.items_json.map((item: any, idx: number) => (
+                                            <li key={idx} className="flex justify-between items-start text-gray-300">
+                                                <div className="flex gap-2"><span className="bg-white/10 text-white font-bold font-mono px-1.5 rounded text-xs h-fit min-w-[24px] text-center border border-white/5">{item.qty || 1}x</span><span className="leading-snug text-xs text-gray-200">{item.name}</span></div>
+                                                <span className="text-gray-500 text-xs font-mono mt-0.5">R$ {Number(item.price).toFixed(2)}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                <div className="p-5 border-t border-white/5 bg-[#050505] space-y-4">
+                                    <div className="space-y-2">
+                                        <div className="flex items-start gap-3 text-xs text-gray-400"><div className="p-1.5 bg-blue-500/10 rounded-md shrink-0"><MapPin size={12} className="text-blue-400"/></div><span className="line-clamp-2 leading-relaxed">{order.delivery_address || 'Retirada / Local'}</span></div>
+                                        <div className="flex items-center gap-3 text-xs text-gray-400"><div className="p-1.5 bg-green-500/10 rounded-md shrink-0"><Phone size={12} className="text-green-400"/></div><span className="font-mono tracking-wide">{order.customer_phone}</span></div>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-3 border-t border-white/5"><span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Total</span><span className="text-lg font-bold text-white tracking-tight text-green-400">R$ {Number(order.total_value).toFixed(2)}</span></div>
+                                    {client.business_type === 'delivery' && order.status !== 'canceled' && order.status !== 'finished' && (
+                                        <div className="grid grid-cols-2 gap-3 pt-2">
+                                            <button onClick={() => handleAdvanceStatus(order)} className="py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-900/20 hover:shadow-blue-900/40 flex items-center justify-center gap-2 group/btn">Avançar <ArrowRight size={12} className="group-hover/btn:translate-x-0.5 transition-transform"/></button>
+                                            <button onClick={() => handleCancelOrder(order.id)} className="py-2.5 bg-white/5 hover:bg-red-500/10 text-gray-400 hover:text-red-400 border border-white/10 hover:border-red-500/20 rounded-xl text-xs font-bold transition-all">Cancelar</button>
+                                        </div>
+                                    )}
+                                    {order.status === 'canceled' && <div className="pt-2 text-center text-[10px] font-bold text-red-400 bg-red-500/5 border border-red-500/10 rounded-lg py-2 uppercase tracking-wider">Pedido Cancelado</div>}
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
+        </div>
+    )
+}
