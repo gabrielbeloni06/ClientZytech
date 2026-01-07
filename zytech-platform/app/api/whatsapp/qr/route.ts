@@ -1,60 +1,53 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
-// Mantenha essas variáveis de ambiente no seu .env.local
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY! 
-
-// Usamos a service key para ter permissão de ler os tokens no banco
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+// import { createClient } from '@supabase/supabase-js'
+// const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+// const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY! 
+// const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 export async function GET(request: Request) {
   try {
+    // Pegamos os params só para não quebrar a lógica, mas não vamos usar para buscar no banco agora
     const { searchParams } = new URL(request.url)
     const orgId = searchParams.get('orgId')
 
-    if (!orgId) {
-      return NextResponse.json({ error: 'ID da organização é obrigatório' }, { status: 400 })
-    }
+    // --- MODO DE TESTE (HARDCODED) ---
+    // Estamos ignorando o orgId e o Supabase para validar a conexão Z-API
+    const INSTANCE_ID = '3ECD19678C8703E97D4572442EF70706'
+    const INSTANCE_TOKEN = '6D5F55C706D38E75CA716748'
+    const CLIENT_TOKEN = '' // Se sua instância tiver Client-Token de segurança, coloque aqui
 
-    // 1. Busca as credenciais da Z-API no seu banco de dados
-    // CERTIFIQUE-SE que os nomes das colunas (zapi_instance_id, zapi_token) estão iguais ao seu DB
-    const { data: org, error: dbError } = await supabase
-      .from('organizations')
-      .select('zapi_instance_id, zapi_token, zapi_security_token') 
-      .eq('id', orgId)
-      .single()
+    console.log(`Tentando buscar QR Code para Instância: ${INSTANCE_ID}`)
 
-    if (dbError || !org?.zapi_instance_id || !org?.zapi_token) {
-      return NextResponse.json({ error: 'Credenciais da instância não encontradas no banco.' }, { status: 404 })
-    }
-
-    // 2. Monta a URL da Z-API para pegar a IMAGEM do QR Code
-    const zApiUrl = `https://api.z-api.io/instances/${org.zapi_instance_id}/token/${org.zapi_token}/qr-code/image`
+    // 2. Monta a URL da Z-API
+    const zApiUrl = `https://api.z-api.io/instances/${INSTANCE_ID}/token/${INSTANCE_TOKEN}/qr-code/image`
     
     // 3. Faz a requisição para a Z-API
     const response = await fetch(zApiUrl, {
       method: 'GET',
       headers: { 
-        'Client-Token': org.zapi_security_token || '' // Passa o Client-Token se você usar
+        'Client-Token': CLIENT_TOKEN
       }
     })
 
-    // Tratamento: Se der 404, a instância pode estar desligada ou incorreta
+    // Tratamento de erros
     if (response.status === 404) {
-      return NextResponse.json({ error: 'Instância não encontrada ou desligada na Z-API.' }, { status: 404 })
+      return NextResponse.json({ error: 'Erro 404: Instância não encontrada ou desligada na Z-API.' }, { status: 404 })
     }
 
-    // Tratamento: Se a Z-API retornar erro (ex: já conectado), as vezes vem como JSON
+    // Verifica se retornou JSON (erro ou status conectado) em vez de imagem
     const contentType = response.headers.get('content-type')
     if (contentType && contentType.includes('application/json')) {
         const jsonResponse = await response.json()
+        
         if (jsonResponse.connected) {
             return NextResponse.json({ connected: true })
         }
-        // Se for outro erro JSON
+        
+        // Se for erro de "Instance not connected" mas sem imagem, ou outro erro
         if (!response.ok) {
-            return NextResponse.json({ error: jsonResponse.message || 'Erro na Z-API' }, { status: response.status })
+            console.error('Erro JSON da Z-API:', jsonResponse)
+            return NextResponse.json({ error: jsonResponse.message || 'Erro na Z-API', details: jsonResponse }, { status: response.status })
         }
     }
 
@@ -62,16 +55,22 @@ export async function GET(request: Request) {
       throw new Error(`Z-API retornou status: ${response.status}`)
     }
 
-    // 4. CONVERSÃO CRÍTICA: Transforma o binário da imagem em Base64
+    // 4. CONVERSÃO: Buffer -> Base64
     const imageBuffer = await response.arrayBuffer()
+    
+    // Validação extra: se o buffer for muito pequeno, pode ser um erro em texto plano disfarçado
+    if (imageBuffer.byteLength < 50) {
+        const text = new TextDecoder().decode(imageBuffer)
+        return NextResponse.json({ error: `Resposta inválida da Z-API: ${text}` }, { status: 500 })
+    }
+
     const base64Image = Buffer.from(imageBuffer).toString('base64')
     const dataUri = `data:image/png;base64,${base64Image}`
 
-    // 5. Devolve o JSON pronto para o seu front
     return NextResponse.json({ qr: dataUri, connected: false })
 
   } catch (error: any) {
-    console.error('Erro na rota QR:', error)
+    console.error('Erro CRÍTICO na rota QR:', error)
     return NextResponse.json({ error: error.message || 'Erro interno do servidor' }, { status: 500 })
   }
 }
