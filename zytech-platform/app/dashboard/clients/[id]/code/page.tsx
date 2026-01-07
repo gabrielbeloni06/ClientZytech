@@ -17,7 +17,7 @@ export default function QrCodePage() {
   const [error, setError] = useState('')
   const [isConnected, setIsConnected] = useState(false)
 
-  // Timer para atualizar o QR Code a cada 15 segundos automaticamente (opcional, mas recomendado)
+  // Timer para atualizar o QR Code a cada 20 segundos automaticamente
   useEffect(() => {
     let interval: NodeJS.Timeout
 
@@ -45,7 +45,6 @@ export default function QrCodePage() {
     setError('')
 
     try {
-      // Chama a NOSSA rota criada no arquivo anterior
       const response = await fetch(`/api/whatsapp/qr?orgId=${clientId}&t=${Date.now()}`)
       const data = await response.json()
 
@@ -144,7 +143,8 @@ export default function QrCodePage() {
             {!isConnected && (
                 <div className="space-y-4 w-full">
                     <div className="text-xs text-zinc-500 bg-zinc-900/50 p-4 rounded-lg text-left space-y-2 border border-white/5">
-                        <p className="flex items-center gap-2"><span className="bg-zinc-800 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">1</span> Abra o WhatsApp > Configurações.</p>
+                        {/* AQUI ESTAVA O ERRO: Troquei > por &gt; para não quebrar o JSX */}
+                        <p className="flex items-center gap-2"><span className="bg-zinc-800 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">1</span> Abra o WhatsApp &gt; Configurações.</p>
                         <p className="flex items-center gap-2"><span className="bg-zinc-800 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">2</span> Toque em Aparelhos conectados.</p>
                         <p className="flex items-center gap-2"><span className="bg-zinc-800 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">3</span> Aponte a câmera para esta tela.</p>
                     </div>
