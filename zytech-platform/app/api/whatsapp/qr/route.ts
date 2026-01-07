@@ -5,19 +5,16 @@ export async function GET(request: Request) {
     // --- CREDENCIAIS Z-API ---
     const INSTANCE_ID = '3ECD19678C8703E97D4572442EF70706'
     const INSTANCE_TOKEN = '6D5F55C706D38E75CA716748'
-    const CLIENT_TOKEN = 'F7a09e770fcca44daab11e9536ea32284S' // Token que você mandou
+    const CLIENT_TOKEN = 'F7a09e770fcca44daab11e9536ea32284S' 
 
     console.log(`🔄 [Backend] Buscando QR Code na Z-API...`)
 
-    // Endpoint JSON (Retorna o base64 em texto, muito mais seguro que binário)
     const zApiUrl = `https://api.z-api.io/instances/${INSTANCE_ID}/token/${INSTANCE_TOKEN}/qr-code`
     
-    // Configura os headers com o seu Token de Segurança
     const headers: Record<string, string> = {
         'Cache-Control': 'no-store'
     }
     
-    // Adiciona o token no header (obrigatório se configurado na Z-API)
     if (CLIENT_TOKEN) {
         headers['Client-Token'] = CLIENT_TOKEN
     }
@@ -27,11 +24,10 @@ export async function GET(request: Request) {
       headers: headers
     })
 
-    // Tratamento de erros de segurança/acesso
     if (response.status === 401 || response.status === 403) {
         console.error('❌ Erro de Permissão Z-API:', await response.text())
         return NextResponse.json({ 
-            error: 'Acesso negado pela Z-API. Verifique se o Client-Token bate com o painel.' 
+            error: 'Acesso negado pela Z-API. Verifique o Client-Token.' 
         }, { status: 401 })
     }
 
@@ -48,12 +44,17 @@ export async function GET(request: Request) {
 
     // 2. Caso: QR Code recebido com sucesso
     if (data.value) {
-        let qrImage = data.value;
+        let rawBase64 = data.value;
+
+        // LÓGICA DE LIMPEZA AGRESSIVA:
+        // 1. Se já vier com prefixo "data:image...", removemos para não duplicar ou usar formato errado
+        rawBase64 = rawBase64.replace(/^data:image\/[a-z]+;base64,/, "");
         
-        // CORREÇÃO: Garante que o base64 tenha o cabeçalho correto para o navegador exibir
-        if (!qrImage.startsWith('data:image')) {
-            qrImage = `data:image/png;base64,${qrImage}`;
-        }
+        // 2. Remove qualquer espaço em branco ou quebra de linha (\n) que corrompe a imagem
+        rawBase64 = rawBase64.replace(/\s/g, '');
+
+        // 3. Reconstrói o prefixo padrão limpo
+        const qrImage = `data:image/png;base64,${rawBase64}`;
 
         return NextResponse.json({ qr: qrImage, connected: false })
     }
