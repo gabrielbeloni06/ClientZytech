@@ -7,8 +7,27 @@ import {
   Home, Scissors, Package, Plus, MapPin, Clock, CheckCircle, XCircle, Truck, 
   ChefHat, Phone, Calendar, ExternalLink, MessageCircle, Filter, User, Link as LinkIcon,
   ShoppingCart, List, X, Settings, Brain, Trash2, ArrowRight, HelpCircle, Bell, UserPlus,
-  MessageSquare, Search, Send, Loader2, QrCode, Smartphone, ArrowUpRight, Hash, Edit
+  MessageSquare, Search, Send, Loader2, QrCode, Smartphone, ArrowUpRight, Hash, Edit,
+  ShieldAlert, Key, Lock, Ban, Play
 } from 'lucide-react'
+
+const Card = ({ children, className = "" }: any) => (
+  <div className={`bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl ${className}`}>
+    {children}
+  </div>
+)
+
+const Badge = ({ children, color = "gray" }: any) => {
+    const colors: any = {
+        green: "bg-green-500/10 text-green-400 border-green-500/20",
+        blue: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+        red: "bg-red-500/10 text-red-400 border-red-500/20",
+        yellow: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
+        gray: "bg-zinc-800 text-zinc-400 border-zinc-700",
+        purple: "bg-purple-500/10 text-purple-400 border-purple-500/20"
+    }
+    return <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${colors[color] || colors.gray}`}>{children}</span>
+}
 
 export const NeonLineChart = ({ currentData, prevTotal }: { currentData: number[], prevTotal: number }) => {
   const height = 60
@@ -45,47 +64,61 @@ export const NeonLineChart = ({ currentData, prevTotal }: { currentData: number[
   )
 }
 
-export const OverviewTab = ({ monthlyStats, loadingStats, notes, setNotes, handleSaveNotes, isSavingNotes, unit = "R$", statLabel = "Performance" }: any) => (
-  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="lg:col-span-2 bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl p-6 relative overflow-hidden shadow-2xl">
-          <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 to-transparent pointer-events-none"></div>
-          <div className="flex justify-between items-center mb-8 relative z-10">
-              <div>
-                  <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-2"><TrendingUp size={14}/> {statLabel}</p>
-                  <h2 className="text-4xl font-bold text-white tracking-tight">
-                      {unit} {monthlyStats.length > 0 ? monthlyStats[monthlyStats.length-1].value.toLocaleString('pt-BR', {minimumFractionDigits: unit === 'R$' ? 2 : 0}) : '0'}
-                  </h2>
-              </div>
-          </div>
-          <div className="h-64 w-full flex items-end justify-between gap-3 relative z-10">
-              {monthlyStats.length === 0 && !loadingStats && (<div className="absolute inset-0 flex items-center justify-center text-gray-600 italic">Sem dados</div>)}
-              <NeonLineChart currentData={monthlyStats.map((s:any) => s.value)} prevTotal={0} />
-          </div>
-      </div>
-      <div className="space-y-6">
-          <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl p-6 flex flex-col justify-between h-[180px] shadow-lg group hover:border-green-500/30 transition-colors">
-              <div className="flex justify-between items-start">
-                  <div>
-                      <p className="text-gray-500 text-xs font-bold uppercase mb-1">Status do Sistema</p>
-                      <h3 className="text-xl font-bold text-white flex items-center gap-2">Operacional</h3>
-                  </div>
-                  <div className="p-2 bg-green-500/10 rounded-lg border border-green-500/20"><Power size={20} className="text-green-500"/></div>
-              </div>
-              <div className="flex items-center gap-3">
-                  <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span></span>
-                  <span className="text-sm text-green-400 font-mono">Conexão Estável</span>
-              </div>
-          </div>
-          <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl p-6 flex flex-col h-[calc(100%-204px)] shadow-lg">
-              <div className="flex justify-between items-center mb-4">
-                  <span className="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><FileText size={14}/> Notas Internas</span>
-                  <button onClick={handleSaveNotes} disabled={isSavingNotes} className="text-[10px] font-bold bg-blue-600/20 text-blue-400 px-2 py-1 rounded hover:bg-blue-600/40 transition-colors">{isSavingNotes ? '...' : 'SALVAR'}</button>
-              </div>
-              <textarea className="flex-1 bg-black/40 border border-white/5 rounded-xl p-3 text-sm text-gray-300 outline-none resize-none focus:border-blue-500/50 focus:bg-black/60 transition-all placeholder:text-gray-700" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Escreva observações sobre este cliente..." />
-          </div>
-      </div>
-  </div>
-)
+export const OverviewTab = ({ monthlyStats, loadingStats, notes, setNotes, handleSaveNotes, isSavingNotes, unit = "R$", statLabel = "Performance", kpiData }: any) => {
+    return (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="p-6 relative group">
+                    <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><TrendingUp size={48} /></div>
+                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-2">Total ({statLabel})</p>
+                    <h3 className="text-3xl font-bold text-white tracking-tight">{unit} {kpiData?.total?.toLocaleString('pt-BR') || 0}</h3>
+                </Card>
+
+                <Card className="p-6 relative group">
+                    <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><MessageSquare size={48} /></div>
+                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-2">Interações (30 dias)</p>
+                    <h3 className="text-3xl font-bold text-white tracking-tight">{kpiData?.interactions || 0}</h3>
+                </Card>
+
+                <Card className="p-6 relative group border-purple-500/20 bg-purple-500/[0.02]">
+                    <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><Bot size={48} /></div>
+                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-2">Status da IA</p>
+                    <h3 className="text-3xl font-bold text-white tracking-tight flex items-center gap-2">
+                        {kpiData?.botActive ? 'Ativo' : 'Pausado'}
+                        <span className={`w-3 h-3 rounded-full ${kpiData?.botActive ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
+                    </h3>
+                </Card>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl p-6 relative overflow-hidden shadow-2xl">
+                    <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 to-transparent pointer-events-none"></div>
+                    <div className="flex justify-between items-center mb-8 relative z-10">
+                        <div>
+                            <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-2"><TrendingUp size={14}/> {statLabel}</p>
+                            <h2 className="text-4xl font-bold text-white tracking-tight">
+                                {unit} {monthlyStats.length > 0 ? monthlyStats[monthlyStats.length-1].value.toLocaleString('pt-BR', {minimumFractionDigits: unit === 'R$' ? 2 : 0}) : '0'}
+                            </h2>
+                        </div>
+                    </div>
+                    <div className="h-64 w-full flex items-end justify-between gap-3 relative z-10">
+                        {monthlyStats.length === 0 && !loadingStats && (<div className="absolute inset-0 flex items-center justify-center text-gray-600 italic">Sem dados</div>)}
+                        <NeonLineChart currentData={monthlyStats.map((s:any) => s.value)} prevTotal={0} />
+                    </div>
+                </div>
+                <div className="space-y-6">
+                    <Card className="flex flex-col h-[300px]">
+                        <div className="p-4 border-b border-white/[0.08] flex justify-between items-center bg-zinc-900/50">
+                            <span className="text-white font-bold text-sm flex items-center gap-2"><FileText size={14} className="text-zinc-500"/> Notas Internas</span>
+                            <button onClick={handleSaveNotes} disabled={isSavingNotes} className="text-[10px] font-bold bg-blue-600/20 text-blue-400 px-2 py-1 rounded hover:bg-blue-600/40 transition-colors">{isSavingNotes ? '...' : 'SALVAR'}</button>
+                        </div>
+                        <textarea className="flex-1 bg-transparent p-4 text-sm text-zinc-300 resize-none outline-none placeholder:text-zinc-700 font-mono leading-relaxed" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Escreva observações importantes sobre este cliente aqui..." />
+                    </Card>
+                </div>
+            </div>
+        </div>
+    )
+}
 
 export const ChatTab = ({ client }: any) => {
   const [contacts, setContacts] = useState<any[]>([])
@@ -96,11 +129,14 @@ export const ChatTab = ({ client }: any) => {
   const [loadingContacts, setLoadingContacts] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
+  const isConnected = !!client.zapi_instance_id || !!client.whatsapp_phone_id;
+
   useEffect(() => {
+    if (!isConnected) return;
     fetchContacts()
     const interval = setInterval(fetchContacts, 10000)
     return () => clearInterval(interval)
-  }, [client.id])
+  }, [client.id, isConnected])
 
   useEffect(() => {
     if (selectedPhone) {
@@ -129,7 +165,8 @@ export const ChatTab = ({ client }: any) => {
             phone: msg.phone,
             lastMessage: msg.content,
             date: new Date(msg.created_at),
-            name: msg.sender_name || 'Desconhecido'
+            name: msg.sender_name || 'Desconhecido',
+            role: msg.role
           })
         }
       })
@@ -152,31 +189,40 @@ export const ChatTab = ({ client }: any) => {
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault()
     if (!inputText.trim() || !selectedPhone) return
-
     setSending(true)
     const tempText = inputText
     setInputText('') 
-
     try {
       const res = await fetch('/api/chat/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orgId: client.id,
-          phone: selectedPhone,
-          text: tempText
-        })
+        body: JSON.stringify({ orgId: client.id, phone: selectedPhone, text: tempText })
       })
-      
       if (!res.ok) throw new Error('Falha no envio')
       await fetchMessages(selectedPhone)
-      
     } catch (error) {
       alert('Erro ao enviar mensagem')
       setInputText(tempText)
     } finally {
       setSending(false)
     }
+  }
+
+  if (!isConnected) {
+      return (
+          <div className="h-[500px] flex flex-col items-center justify-center bg-[#0a0a0a] border border-white/10 rounded-2xl p-8 text-center animate-in fade-in">
+              <div className="w-20 h-20 bg-zinc-800 rounded-full flex items-center justify-center mb-6 border border-zinc-700">
+                  <Smartphone size={32} className="text-zinc-500"/>
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-2">WhatsApp Desconectado</h3>
+              <p className="text-zinc-400 max-w-md mb-8">
+                  Para visualizar e responder mensagens em tempo real, você precisa conectar uma instância do WhatsApp.
+              </p>
+              <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-500 text-sm font-mono mb-4">
+                  Acesse a aba <strong>Configurações</strong> para conectar.
+              </div>
+          </div>
+      )
   }
 
   return (
@@ -188,7 +234,7 @@ export const ChatTab = ({ client }: any) => {
           </h3>
           <div className="relative">
             <Search className="absolute left-3 top-2.5 text-gray-500" size={14} />
-            <input type="text" placeholder="Buscar número..." className="w-full bg-[#111] border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:border-blue-500 outline-none" />
+            <input type="text" placeholder="Buscar..." className="w-full bg-[#111] border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:border-blue-500 outline-none" />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -203,7 +249,10 @@ export const ChatTab = ({ client }: any) => {
                   <span className="font-bold text-gray-200 text-sm">{contact.name !== 'Cliente' ? contact.name : contact.phone}</span>
                   <span className="text-[10px] text-gray-500">{contact.date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                 </div>
-                <p className="text-xs text-gray-400 truncate max-w-[200px]">{contact.lastMessage}</p>
+                <div className="flex justify-between items-end">
+                    <p className="text-xs text-gray-400 truncate max-w-[150px]">{contact.lastMessage}</p>
+                    {contact.role === 'user' ? <span className="w-2 h-2 bg-blue-500 rounded-full"></span> : null}
+                </div>
               </div>
             ))
           )}
@@ -215,7 +264,7 @@ export const ChatTab = ({ client }: any) => {
             <div className="p-4 bg-[#0a0a0a]/90 backdrop-blur border-b border-white/10 flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center"><User size={20} className="text-white"/></div>
-                <div><h3 className="font-bold text-white">{selectedPhone}</h3><span className="text-xs text-green-400 flex items-center gap-1">● Online via WhatsApp</span></div>
+                <div><h3 className="font-bold text-white">{selectedPhone}</h3><span className="text-xs text-green-400 flex items-center gap-1">● Online</span></div>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
@@ -246,85 +295,237 @@ export const ChatTab = ({ client }: any) => {
   )
 }
 
-export const SettingsTab = ({ role, botConfig, setBotConfig, syncScheduleFromDb, isSyncingSchedule, handleSaveBotConfig, isSavingBot, isEditing, setIsEditing, editForm, setEditForm, handleUpdateClient, botCapabilities, filteredTemplates, client }: any) => {
-  const router = useRouter(); 
+export const SettingsTab = ({ 
+    role, botConfig, setBotConfig, syncScheduleFromDb, isSyncingSchedule, handleSaveBotConfig, 
+    isSavingBot, isEditing, setIsEditing, editForm, setEditForm, handleUpdateClient, 
+    botCapabilities, filteredTemplates, client, openLoginModal, openPasswordModal 
+}: any) => {
+  const router = useRouter();
+
+  const [zapiForm, setZapiForm] = useState({
+      instanceId: client.zapi_instance_id || '',
+      token: client.zapi_token || '',
+      clientToken: client.zapi_client_token || ''
+  });
+  const [isSavingZapi, setIsSavingZapi] = useState(false);
+
+  const handleSaveZapiKeys = async () => {
+      if (role !== 'super_admin') return;
+      setIsSavingZapi(true);
+      
+      const { error } = await supabase.from('organizations').update({
+          zapi_instance_id: zapiForm.instanceId,
+          zapi_token: zapiForm.token,
+          zapi_client_token: zapiForm.clientToken
+      }).eq('id', client.id);
+
+      if (error) {
+          alert("Erro ao salvar credenciais: " + error.message);
+      } else {
+          alert("Credenciais Z-API atualizadas com sucesso!");
+      }
+      setIsSavingZapi(false);
+  }
   
   const handleOpenQrPage = () => {
-    if (!botConfig.phoneId) {
-        alert("Defina um Nome da Instância (ID) e salve antes de conectar.");
+    const instanceToConnect = zapiForm.instanceId || botConfig.phoneId;
+    
+    if (!instanceToConnect) {
+        alert("Nenhuma instância configurada. O administrador precisa definir o ID da instância Z-API ou Evolution.");
         return;
     }
-    router.push(`/dashboard/clients/${client.id}/code?instance=${botConfig.phoneId}`);
+    router.push(`/dashboard/clients/${client.id}/code?instance=${instanceToConnect}`);
   };
 
+  const canEditPersona = botConfig.planLevel.includes('ZyCore');
+
   return (
-  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
-          <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
-              <div><h3 className="font-bold text-lg flex items-center gap-2 text-white"><Bot className="text-purple-500" size={20}/> Bot Intelligence</h3><p className="text-xs text-gray-500 mt-1">Configuração da IA e conexão WhatsApp</p></div>
-              {role === 'super_admin' && (<button onClick={() => setBotConfig({...botConfig, isActive: !botConfig.isActive})} className={`relative w-11 h-6 rounded-full transition-all duration-300 ${botConfig.isActive ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-gray-700'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 shadow-sm ${botConfig.isActive ? 'left-6' : 'left-1'}`}></div></button>)}
-          </div>
-          <div className="p-6 space-y-6">
-              <div className="space-y-4">
-                  {role === 'super_admin' ? (
-                      <>
-                          <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Plano</label><select className="w-full bg-[#050505] border border-white/10 rounded-lg p-2.5 text-white text-sm focus:border-purple-500 outline-none" value={botConfig.planLevel} onChange={e => setBotConfig({...botConfig, planLevel: e.target.value})}><option value="ZyStart">ZyStart</option><option value="ZyControl">ZyControl</option><option value="ZyBotAI">ZyBotAI</option><option value="ZyCore">ZyCore</option></select></div>
-                              <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Template</label><select className="w-full bg-[#050505] border border-white/10 rounded-lg p-2.5 text-white text-sm focus:border-purple-500 outline-none" value={botConfig.template} onChange={e => setBotConfig({...botConfig, template: e.target.value})}>{filteredTemplates.length > 0 ? filteredTemplates.map((t:any) => (<option key={t.id} value={t.id}>{t.label}</option>)) : (<option value="">Sem template</option>)}</select></div>
-                          </div>
-                          <div className="space-y-1"><label className="text-[10px] font-bold text-yellow-500 uppercase flex items-center gap-1"><Sparkles size={10}/> Prompt Mestre (Admin)</label><textarea className="w-full bg-[#050505] border border-yellow-500/20 rounded-lg p-3 text-gray-300 text-sm focus:border-yellow-500/50 font-mono" rows={3} value={botConfig.aiPersona} onChange={e => setBotConfig({...botConfig, aiPersona: e.target.value})} /></div>
-                          <div className="space-y-1"><div className="flex justify-between"><label className="text-[10px] font-bold text-blue-400 uppercase">Contexto: Horários</label><button onClick={syncScheduleFromDb} disabled={isSyncingSchedule} className="text-[10px] text-gray-500 hover:text-white flex items-center gap-1">{isSyncingSchedule ? <RefreshCcw size={10} className="animate-spin"/> : 'Sincronizar'}</button></div><input type="text" className="w-full bg-[#050505] border border-blue-500/20 rounded-lg p-2.5 text-gray-300 text-sm focus:border-blue-500/50" value={botConfig.openingHours} onChange={e => setBotConfig({...botConfig, openingHours: e.target.value})} /></div>
-                          
-                          <div className="pt-4 border-t border-white/5 space-y-4 bg-white/[0.02] p-4 rounded-xl border border-white/5">
-                              <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-green-500 uppercase flex items-center gap-1"><Smartphone size={12}/> Nome da Instância (ID)</label>
-                                  <input placeholder="Ex: imobiliaria_clientzy_01" className="w-full bg-[#050505] border border-white/10 rounded-lg p-2 text-xs font-mono text-gray-400 focus:border-green-500 outline-none" value={botConfig.phoneId} onChange={e => setBotConfig({...botConfig, phoneId: e.target.value})} />
-                                  <p className="text-[9px] text-gray-500">Este ID cria a conexão na VPS.</p>
-                              </div>
-                              
-                              <div className="pt-2">
-                                  <button 
-                                    type="button"
-                                    onClick={handleOpenQrPage}
-                                    disabled={!botConfig.phoneId}
-                                    className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-green-900/20 disabled:opacity-50"
-                                  >
-                                      <QrCode size={16}/> Abrir Conexão WhatsApp (QR Code)
-                                      <ArrowUpRight size={14} className="opacity-70" />
-                                  </button>
-                                  <p className="text-[9px] text-center text-gray-500 mt-2">Isso abrirá uma tela segura para leitura do código.</p>
-                              </div>
-                              
-                              <div className="hidden">
-                                  <input type="password" value={botConfig.accessToken} onChange={e => setBotConfig({...botConfig, accessToken: e.target.value})} />
-                              </div>
-                          </div>
-                      </>
-                  ) : <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-sm text-green-400 flex items-center gap-2"><CheckCircle size={16}/> Configuração gerenciada pela Zytech.</div>}
-                  
-                  <div className="space-y-1 mt-4"><label className="text-[10px] font-bold text-cyan-500 uppercase flex items-center gap-1"><HelpCircle size={10}/> Perguntas Frequentes (FAQ)</label><textarea className="w-full bg-[#050505] border border-cyan-500/20 rounded-lg p-3 text-gray-300 text-sm focus:border-cyan-500/50 font-mono" rows={3} placeholder="Ex: Aceitamos fiador? Sim." value={botConfig.aiFaq} onChange={e => setBotConfig({...botConfig, aiFaq: e.target.value})} /></div>
-                  <button onClick={handleSaveBotConfig} disabled={isSavingBot} className="w-full bg-white/5 hover:bg-white/10 text-white border border-white/10 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all">{isSavingBot ? 'Salvando...' : <><Save size={16}/> Salvar Configuração</>}</button>
-              </div>
-          </div>
+  <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4">
+      <div className="xl:col-span-2 space-y-6">
+          <Card className="p-0">
+             <div className="p-6 border-b border-white/[0.08] bg-zinc-900/30">
+                 <h3 className="font-bold text-lg text-white flex items-center gap-2"><Bot className="text-blue-500"/> Inteligência Artificial (ZyBot)</h3>
+                 <p className="text-zinc-500 text-xs mt-1">Configure o comportamento e o conhecimento do seu assistente.</p>
+             </div>
+             
+             <div className="p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Status do Bot</label>
+                        <div className="flex items-center justify-between bg-[#18181b] border border-white/10 rounded-lg p-2.5">
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setBotConfig({...botConfig, isActive: !botConfig.isActive})} className={`relative w-12 h-6 rounded-full transition-all duration-300 ${botConfig.isActive ? 'bg-emerald-500' : 'bg-zinc-700'}`}>
+                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 shadow-sm ${botConfig.isActive ? 'left-7' : 'left-1'}`}></div>
+                                </button>
+                                <span className={`text-sm font-medium ${botConfig.isActive ? 'text-emerald-400' : 'text-zinc-500'}`}>{botConfig.isActive ? 'Ativo' : 'Inativo'}</span>
+                            </div>
+                            
+                            <button onClick={handleOpenQrPage} className="text-[10px] bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded flex items-center gap-1 font-bold transition-all shadow-lg shadow-green-900/20">
+                                <Smartphone size={12}/> Conectar WhatsApp
+                                <ArrowUpRight size={10} className="opacity-70"/>
+                            </button>
+                        </div>
+                    </div>
+                    {role === 'super_admin' && (
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Template de Nicho</label>
+                            <select 
+                                className="w-full bg-[#18181b] border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500/50" 
+                                value={botConfig.template} 
+                                onChange={e => setBotConfig({...botConfig, template: e.target.value})}
+                            >
+                                <option value="">Selecione...</option>
+                                {filteredTemplates.map((t:any) => (<option key={t.id} value={t.id}>{t.label}</option>))}
+                                <option value="imobiliaria_basico">Imobiliária (Padrão)</option>
+                            </select>
+                        </div>
+                    )}
+                </div>
+
+                <div className="border-t border-white/[0.05] my-2"></div>
+
+                <div className="space-y-5">
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1"><HelpCircle size={12}/> Perguntas Frequentes (FAQ)</label>
+                        <textarea 
+                            className="w-full bg-[#18181b] border border-white/10 rounded-lg p-3 text-zinc-300 text-sm focus:border-blue-500/50 font-mono min-h-[100px]" 
+                            placeholder="Ex: Qual o horário de almoço? R: Das 12h às 13h."
+                            value={botConfig.aiFaq} 
+                            onChange={e => setBotConfig({...botConfig, aiFaq: e.target.value})} 
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1"><Clock size={12}/> Horários de Atendimento</label>
+                            <button onClick={syncScheduleFromDb} disabled={isSyncingSchedule} className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20">{isSyncingSchedule ? <RefreshCcw size={10} className="animate-spin"/> : 'Sincronizar da Agenda'}</button>
+                        </div>
+                        <input 
+                            type="text" 
+                            className="w-full bg-[#18181b] border border-white/10 rounded-lg p-2.5 text-zinc-300 text-sm focus:border-blue-500/50" 
+                            value={botConfig.openingHours} 
+                            onChange={e => setBotConfig({...botConfig, openingHours: e.target.value})} 
+                        />
+                    </div>
+
+                    {(canEditPersona || role === 'super_admin') && (
+                        <div className="space-y-2 pt-2">
+                            <label className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1"><Brain size={12}/> Personalidade (Persona)</label>
+                            <textarea 
+                                className="w-full bg-purple-500/[0.03] border border-purple-500/20 rounded-lg p-3 text-zinc-300 text-sm focus:border-purple-500/50 font-mono" 
+                                rows={2}
+                                placeholder="Comportamento da IA..."
+                                value={botConfig.aiPersona} 
+                                onChange={e => setBotConfig({...botConfig, aiPersona: e.target.value})} 
+                            />
+                        </div>
+                    )}
+                </div>
+
+                <div className="pt-4">
+                    <button onClick={handleSaveBotConfig} disabled={isSavingBot} className="bg-white text-black hover:bg-zinc-200 px-6 py-2.5 rounded-lg font-bold text-sm flex items-center gap-2 transition-all disabled:opacity-50">
+                        {isSavingBot ? <Loader2 size={16} className="animate-spin"/> : <Save size={16}/>} Salvar Configurações
+                    </button>
+                </div>
+             </div>
+          </Card>
       </div>
       
-      <div className="bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl h-fit">
-          <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
-              <div><h3 className="font-bold text-lg flex items-center gap-2 text-white"><Briefcase size={20} className="text-blue-500"/> Contrato</h3><p className="text-xs text-gray-500 mt-1">Detalhes de faturamento e plano.</p></div>
-              {role === 'super_admin' && <button onClick={() => setIsEditing(!isEditing)} className="text-blue-400 text-xs font-bold hover:text-blue-300 uppercase tracking-wider border border-blue-500/30 px-3 py-1 rounded-lg hover:bg-blue-500/10 transition-all">{isEditing ? 'Cancelar Edição' : 'Editar Dados'}</button>}
-          </div>
-          <form onSubmit={handleUpdateClient} className="p-6 space-y-5">
-              <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Nome da Empresa</label><input type="text" disabled={!isEditing} className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-white text-sm disabled:opacity-50 focus:border-blue-500 outline-none" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})}/></div>
-              <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Plano</label><select disabled={!isEditing} className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-white text-sm disabled:opacity-50 outline-none" value={editForm.plan} onChange={e => { setEditForm({...editForm, plan: e.target.value}); setBotConfig((prev:any) => ({...prev, planLevel: e.target.value})) }}><option value="ZyStart">ZyStart</option><option value="ZyControl">ZyControl</option><option value="ZyBotAI">ZyBotAI</option><option value="ZyCore">ZyCore</option></select></div>
-                  <div className="space-y-1"><label className="text-[10px] font-bold text-green-500 uppercase">Valor (R$)</label><input type="text" disabled={!isEditing} className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-white text-sm disabled:opacity-50 focus:border-green-500 outline-none font-mono" value={editForm.value} onChange={e => setEditForm({...editForm, value: e.target.value})}/></div>
+      <div className="space-y-6">
+          {role === 'super_admin' && (
+              <>
+                <Card className="border-red-500/20 bg-red-500/[0.02]">
+                    <div className="p-4 border-b border-red-500/10 flex items-center gap-2">
+                        <ShieldAlert size={16} className="text-red-500"/>
+                        <h3 className="font-bold text-sm text-white">Conexão Z-API (Admin Only)</h3>
+                    </div>
+                    <div className="p-4 space-y-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] text-red-300 uppercase font-bold">Instance ID / Nome</label>
+                            <input 
+                                className="w-full bg-[#0F0F11] border border-red-500/20 rounded px-2 py-1.5 text-xs text-zinc-300 font-mono focus:border-red-500 outline-none" 
+                                value={zapiForm.instanceId} 
+                                onChange={e => setZapiForm({...zapiForm, instanceId: e.target.value})} 
+                                placeholder="ex: imobiliaria_clientzy"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] text-red-300 uppercase font-bold">Instance Token</label>
+                            <input 
+                                type="password" 
+                                className="w-full bg-[#0F0F11] border border-red-500/20 rounded px-2 py-1.5 text-xs text-zinc-300 font-mono focus:border-red-500 outline-none" 
+                                value={zapiForm.token} 
+                                onChange={e => setZapiForm({...zapiForm, token: e.target.value})} 
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] text-red-300 uppercase font-bold">Client Token</label>
+                            <input 
+                                type="password" 
+                                className="w-full bg-[#0F0F11] border border-red-500/20 rounded px-2 py-1.5 text-xs text-zinc-300 font-mono focus:border-red-500 outline-none" 
+                                value={zapiForm.clientToken} 
+                                onChange={e => setZapiForm({...zapiForm, clientToken: e.target.value})} 
+                            />
+                        </div>
+                        <button onClick={handleSaveZapiKeys} disabled={isSavingZapi} className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 py-2 rounded text-xs font-bold transition-all">
+                            {isSavingZapi ? 'Salvando...' : 'Atualizar Credenciais'}
+                        </button>
+                    </div>
+                </Card>
+                
+                <Card className="border-purple-500/20 bg-purple-500/[0.02]">
+                     <div className="p-4 border-b border-purple-500/10 flex items-center gap-2"><Key size={16} className="text-purple-500"/><h3 className="font-bold text-sm text-white">Acesso & Segurança</h3></div>
+                     <div className="p-4 flex gap-2">
+                        <button onClick={openLoginModal} className="flex-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2"><UserPlus size={14}/> Gerar Acesso</button>
+                        <button onClick={openPasswordModal} className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2"><Lock size={14}/> Redefinir Senha</button>
+                     </div>
+                </Card>
+              </>
+          )}
+
+          <Card>
+              <div className="p-4 border-b border-white/[0.08] flex justify-between items-center">
+                  <h3 className="font-bold text-sm text-white flex items-center gap-2"><Briefcase size={16} className="text-zinc-500"/> Contrato</h3>
+                  {role === 'super_admin' && <button onClick={() => setIsEditing(!isEditing)} className="text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase">{isEditing ? 'Cancelar' : 'Editar'}</button>}
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Ciclo</label><select disabled={!isEditing} className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-white text-sm disabled:opacity-50 outline-none" value={editForm.cycle} onChange={e => setEditForm({...editForm, cycle: e.target.value})}><option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option><option value="unico">Único</option></select></div>
-                  <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Vencimento</label><input type="date" disabled={!isEditing} className="w-full bg-[#050505] border border-white/10 rounded-lg p-3 text-white text-sm disabled:opacity-50 outline-none text-gray-400" value={editForm.valid_until} onChange={e => setEditForm({...editForm, valid_until: e.target.value})}/></div>
-              </div>
-              {role === 'super_admin' && isEditing && <div className="pt-4 flex justify-end"><button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-[0_0_20px_rgba(37,99,235,0.3)] transition-all"><Save size={18}/> Salvar Alterações</button></div>}
-          </form>
+              <form onSubmit={handleUpdateClient} className="p-4 space-y-4">
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Empresa</label>
+                        <input disabled={!isEditing} className="w-full bg-[#18181b] border border-white/10 rounded px-3 py-2 text-sm text-white disabled:opacity-50" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})}/>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Plano</label>
+                            <select disabled={!isEditing} className="w-full bg-[#18181b] border border-white/10 rounded px-3 py-2 text-sm text-white disabled:opacity-50" value={editForm.plan} onChange={e => { setEditForm({...editForm, plan: e.target.value}); setBotConfig((prev:any) => ({...prev, planLevel: e.target.value})) }}>
+                                <option value="ZyStart">ZyStart</option><option value="ZyControl">ZyControl</option><option value="ZyBotAI">ZyBotAI</option><option value="ZyCore">ZyCore</option>
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                             <label className="text-[10px] font-bold text-zinc-500 uppercase">Valor (R$)</label>
+                             <input disabled={!isEditing} className="w-full bg-[#18181b] border border-white/10 rounded px-3 py-2 text-sm text-emerald-400 font-mono disabled:opacity-50" value={editForm.value} onChange={e => setEditForm({...editForm, value: e.target.value})}/>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                         <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Ciclo</label>
+                            <select disabled={!isEditing} className="w-full bg-[#18181b] border border-white/10 rounded px-3 py-2 text-sm text-white disabled:opacity-50" value={editForm.cycle} onChange={e => setEditForm({...editForm, cycle: e.target.value})}>
+                                <option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option>
+                            </select>
+                         </div>
+                         <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Vencimento</label>
+                            <input type="date" disabled={!isEditing} className="w-full bg-[#18181b] border border-white/10 rounded px-3 py-2 text-sm text-white disabled:opacity-50" value={editForm.valid_until} onChange={e => setEditForm({...editForm, valid_until: e.target.value})}/>
+                         </div>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Pagamento</label>
+                        <select disabled={!isEditing} className="w-full bg-[#18181b] border border-white/10 rounded px-3 py-2 text-sm text-white disabled:opacity-50" value={editForm.payment_method} onChange={e => setEditForm({...editForm, payment_method: e.target.value})}>
+                            <option value="pix">PIX</option><option value="boleto">Boleto</option><option value="cartao">Cartão de Crédito</option>
+                        </select>
+                    </div>
+                    {isEditing && <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded text-xs font-bold">Salvar Contrato</button>}
+              </form>
+          </Card>
       </div>
   </div>
   )
@@ -517,7 +718,7 @@ export const AppointmentsTab = ({ client, loadingAppts, apptFilter, setApptFilte
   </div>
 )
 
-export const OrdersTab = ({ isServiceType, fetchClientOrders, clientOrders, handleAdvanceStatus, handleCancelOrder, client }: any) => {
+export const OrdersTab = ({ fetchClientOrders, clientOrders, handleAdvanceStatus, handleCancelOrder, client }: any) => {
     const getStatusStyle = (status: string) => {
       switch(status) {
         case 'pending': return { color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20', shadow: 'shadow-yellow-500/10', label: 'Pendente', icon: Clock }
@@ -534,8 +735,7 @@ export const OrdersTab = ({ isServiceType, fetchClientOrders, clientOrders, hand
             <div className="flex flex-col md:flex-row justify-between items-end">
                 <div>
                     <h3 className="text-xl font-bold mb-1 flex items-center gap-2 text-white">
-                        {isServiceType ? <Scissors className="text-purple-500"/> : <ShoppingCart className="text-blue-500"/>} 
-                        {isServiceType ? ' Serviços Realizados' : ' Gestão de Pedidos'}
+                        <ShoppingCart className="text-blue-500"/> Gestão de Pedidos
                     </h3>
                     <p className="text-gray-400 text-sm">Acompanhe o status e gerencie entregas.</p>
                 </div>
