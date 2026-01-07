@@ -27,9 +27,13 @@ export default function ClientDetailsPage() {
   const [clientOrders, setClientOrders] = useState<any[]>([])
   const [notifications, setNotifications] = useState<any[]>([])
   const [loadingNotifications, setLoadingNotifications] = useState(false)
+  
   const [appointmentsList, setAppointmentsList] = useState<any[]>([])
+  const [loadingAppts, setLoadingAppts] = useState(false)
+  
   const [monthlyStats, setMonthlyStats] = useState<any[]>([])
   const [loadingStats, setLoadingStats] = useState(false)
+  const [kpiData, setKpiData] = useState({ total: 0, interactions: 0, botActive: false })
   
   const [botConfig, setBotConfig] = useState({ isActive: false, phoneId: '', accessToken: '', greeting: '', personality: '', aiPersona: '', openingHours: '', template: '', planLevel: 'ZyStart', aiFaq: '' })
   const [isSavingBot, setIsSavingBot] = useState(false)
@@ -55,7 +59,7 @@ export default function ClientDetailsPage() {
   
   useEffect(() => { 
     if (client) {
-         if (client.business_type === 'real_estate') fetchRealEstateStats(); else generateMockFinancialData();
+         fetchDashboardMetrics()
          if (client.business_type === 'delivery') { setInterval(fetchClientOrders, 30000); fetchClientOrders() }
     } 
   }, [client])
@@ -75,7 +79,7 @@ export default function ClientDetailsPage() {
     const { data: clientData } = await supabase.from('organizations').select('*').eq('id', clientId).single()
     if (!clientData) { router.push('/dashboard'); return }
     setClient(clientData); setNotes(clientData.notes || '')
-    const { data: schedules } = await supabase.from('base_schedules').select('*').eq('organization_id', clientId)
+    
     setBotConfig({
         isActive: clientData.bot_status || false, phoneId: clientData.whatsapp_phone_id || '', accessToken: clientData.whatsapp_access_token || '',
         greeting: clientData.bot_greeting_message || '', personality: clientData.bot_personality || '', aiPersona: clientData.ai_persona || '',
@@ -114,7 +118,39 @@ export default function ClientDetailsPage() {
       } catch (err: any) { alert('Erro: ' + err.message) } finally { setIsCreatingUser(false) }
   }
 
-  async function syncScheduleFromDb() { setIsSyncingSchedule(false) }
+  async function syncScheduleFromDb() {
+    setIsSyncingSchedule(true)
+    try {
+        const { data: schedules } = await supabase.from('base_schedules').select('*').eq('organization_id', client.id)
+        if (!schedules || schedules.length === 0) {
+            alert('Nenhuma agenda encontrada para sincronizar.');
+            return;
+        }
+        
+        const days = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']; 
+        let text = '';
+        [...schedules].sort((a, b) => a.day_of_week - b.day_of_week).forEach(s => {
+            if (s.is_active && s.slots && s.slots.length > 0) {
+                const sortedSlots = s.slots.sort();
+                text += `${days[s.day_of_week]}: ${sortedSlots[0]} às ${sortedSlots[sortedSlots.length - 1]}. `;
+            }
+        })
+        const finalSchedule = text.trim();
+        
+        if (finalSchedule) {
+            setBotConfig(prev => ({ ...prev, openingHours: finalSchedule }));
+            alert('Horários sincronizados com sucesso! Clique em Salvar para persistir.');
+        } else {
+            alert('A agenda existe mas não tem horários ativos.');
+        }
+    } catch (error) { 
+        console.error(error); 
+        alert('Erro ao sincronizar agenda.');
+    } finally { 
+        setIsSyncingSchedule(false) 
+    }
+  }
+
   async function fetchClientOrders() { const { data } = await supabase.from('orders').select('*').eq('organization_id', clientId).order('created_at', { ascending: false }).limit(20); setClientOrders(data || []) }
   async function fetchNotifications() { setLoadingNotifications(true); const { data } = await supabase.from('notifications').select('*').eq('organization_id', client?.id).eq('is_read', false); setNotifications(data || []); setLoadingNotifications(false) }
   async function markAsRead(id: string) { setNotifications(notifications.filter(n => n.id !== id)); await supabase.from('notifications').update({ is_read: true }).eq('id', id) }
@@ -122,7 +158,7 @@ export default function ClientDetailsPage() {
   async function handleSaveBotConfig() {
     setIsSavingBot(true)
     const { error } = await supabase.from('organizations').update({
-        bot_status: botConfig.isActive, bot_template: botConfig.template, plan: botConfig.planLevel, ai_persona: botConfig.aiPersona, ai_faq: botConfig.aiFaq, opening_hours: botConfig.openingHours
+        bot_status: botConfig.isActive, bot_template: botConfig.template, plan: botConfig.planLevel, ai_persona: botConfig.aiPersona, ai_faq: botConfig.aiFaq, opening_hours: botConfig.openingHours, whatsapp_phone_id: botConfig.phoneId
     }).eq('id', client.id)
     if (!error) { setClient({...client, plan: botConfig.planLevel}); alert('Configurações salvas!') }
     setIsSavingBot(false)
@@ -144,10 +180,57 @@ export default function ClientDetailsPage() {
   async function toggleProductStatus(p: any) { setProducts(products.map(i => i.id === p.id ? {...i, is_available: !i.is_available} : i)); await supabase.from('products').update({ is_available: !p.is_available }).eq('id', p.id) }
   async function handleDeleteProduct(id: string) { if(confirm('Excluir?')) { setProducts(products.filter(p => p.id !== id)); await supabase.from('products').delete().eq('id', id) } }
 
-  async function fetchRealEstateStats() { setLoadingStats(true); setMonthlyStats([{label: 'JAN', value: 12}, {label: 'FEV', value: 19}, {label: 'MAR', value: 15}, {label: 'ABR', value: 22}, {label: 'MAI', value: 28}, {label: 'JUN', value: 35}]); setLoadingStats(false) }
-  function generateMockFinancialData() { fetchRealEstateStats() }
+  async function fetchDashboardMetrics() {
+      setLoadingStats(true)
+      let total = 0
+      
+      if (client.business_type === 'delivery' || client.business_type === 'commerce') {
+          const { data: orders } = await supabase.from('orders').select('total_value').eq('organization_id', client.id)
+          total = orders?.reduce((acc, curr) => acc + (curr.total_value || 0), 0) || 0
+      } else {
+          const { count } = await supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('organization_id', client.id).eq('status', 'confirmed')
+          total = count || 0
+      }
+
+      const today = new Date()
+      const thirtyDaysAgo = new Date(today.setDate(today.getDate() - 30)).toISOString()
+      const { count: msgCount } = await supabase.from('chat_messages').select('*', { count: 'exact', head: true }).eq('organization_id', client.id).gte('created_at', thirtyDaysAgo)
+      
+      const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5); sixMonthsAgo.setDate(1);
+      const tableToQuery = (client.business_type === 'delivery' || client.business_type === 'commerce') ? 'orders' : 'appointments';
+      const dateField = tableToQuery === 'orders' ? 'created_at' : 'appointment_date';
+      
+      const { data: graphData } = await supabase.from(tableToQuery).select(dateField).eq('organization_id', client.id).gte(dateField, sixMonthsAgo.toISOString());
+      
+      const monthNames = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"]
+      let monthlyData: any = {};
+      for (let i = 0; i < 6; i++) { const d = new Date(); d.setMonth(d.getMonth() - i); monthlyData[monthNames[d.getMonth()]] = 0; }
+      
+      if (graphData) {
+          graphData.forEach((item: any) => {
+              const d = new Date(item[dateField]);
+              const key = monthNames[d.getMonth()];
+              if (monthlyData.hasOwnProperty(key)) monthlyData[key]++;
+          });
+      }
+      
+      const chartStats = Object.entries(monthlyData).map(([label, value]) => ({ label, value })).reverse();
+
+      setKpiData({ total, interactions: msgCount || 0, botActive: client.bot_status })
+      setMonthlyStats(chartStats)
+      setLoadingStats(false)
+  }
+
+  async function fetchClientAppointments() { 
+    if (!client?.id) return; 
+    setLoadingAppts(true); 
+    let query = supabase.from('appointments').select(`*, products (name, neighborhood, property_link)`).eq('organization_id', client.id).order('appointment_date', { ascending: false }); 
+    const { data, error } = await query; 
+    if (!error) { setAppointmentsList(data || []); } 
+    setLoadingAppts(false) 
+  }
+
   async function handleSaveNotes() { setIsSavingNotes(true); await supabase.from('organizations').update({ notes: notes }).eq('id', client.id); setIsSavingNotes(false) }
-  async function fetchClientAppointments() { const { data } = await supabase.from('appointments').select('*, products(name)').eq('organization_id', client.id); setAppointmentsList(data||[]) }
 
   if (loading) return <div className="h-screen w-full bg-[#09090b] flex items-center justify-center"><div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>
   if (!client) return null
@@ -177,12 +260,12 @@ export default function ClientDetailsPage() {
         </div>
 
         <main className="max-w-7xl mx-auto p-6 md:p-8">
-            {activeTab === 'overview' && <OverviewTab monthlyStats={monthlyStats} loadingStats={loadingStats} notes={notes} setNotes={setNotes} handleSaveNotes={handleSaveNotes} isSavingNotes={isSavingNotes} unit={isRealEstate ? '' : 'R$'} statLabel={isRealEstate ? 'Visitas' : 'Vendas'} />}
+            {activeTab === 'overview' && <OverviewTab monthlyStats={monthlyStats} loadingStats={loadingStats} notes={notes} setNotes={setNotes} handleSaveNotes={handleSaveNotes} isSavingNotes={isSavingNotes} unit={isRealEstate ? '' : 'R$'} statLabel={isRealEstate ? 'Visitas' : 'Vendas'} kpiData={kpiData} />}
             {activeTab === 'chat' && <ChatTab client={client} />}
             {activeTab === 'contract' && <SettingsTab role={role} botConfig={botConfig} setBotConfig={setBotConfig} syncScheduleFromDb={syncScheduleFromDb} isSyncingSchedule={isSyncingSchedule} handleSaveBotConfig={handleSaveBotConfig} isSavingBot={isSavingBot} isEditing={isEditing} setIsEditing={setIsEditing} editForm={editForm} setEditForm={setEditForm} handleUpdateClient={handleUpdateClient} filteredTemplates={getFilteredTemplates()} client={client} openLoginModal={() => setIsLoginModalOpen(true)} openPasswordModal={() => setIsPasswordModalOpen(true)} />}
             {activeTab === 'notifications' && <NotificationsTab notifications={notifications} markAsRead={markAsRead} loadingNotifications={loadingNotifications} fetchNotifications={fetchNotifications} />}
             {activeTab === 'bot_catalog' && <CatalogTab client={client} isRealEstate={isRealEstate} products={products} setIsProductModalOpen={setIsProductModalOpen} labels={labels} toggleProductStatus={toggleProductStatus} handleDeleteProduct={handleDeleteProduct} />}
-            {activeTab === 'appointments' && <AppointmentsTab appointmentsList={appointmentsList} isRealEstate={isRealEstate} />}
+            {activeTab === 'appointments' && <AppointmentsTab appointmentsList={appointmentsList} isRealEstate={isRealEstate} loadingAppts={loadingAppts} />}
             {activeTab === 'orders' && <OrdersTab clientOrders={clientOrders} fetchClientOrders={fetchClientOrders} />}
         </main>
 

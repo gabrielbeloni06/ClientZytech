@@ -8,8 +8,9 @@ import {
   ChefHat, Phone, Calendar, ExternalLink, MessageCircle, Filter, User, Link as LinkIcon,
   ShoppingCart, List, X, Settings, Brain, Trash2, ArrowRight, HelpCircle, Bell, UserPlus,
   MessageSquare, Search, Send, Loader2, QrCode, Smartphone, ArrowUpRight, Ban, Play, ShieldAlert,
-  Zap, Eye, Key, CreditCard, Lock
+  Zap, Eye, Key, Lock, CreditCard
 } from 'lucide-react'
+
 
 const Card = ({ children, className = "" }: any) => (
   <div className={`bg-[#0F0F11] border border-white/[0.08] rounded-xl overflow-hidden shadow-sm ${className}`}>
@@ -29,32 +30,37 @@ const Badge = ({ children, color = "gray" }: any) => {
     return <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${colors[color] || colors.gray}`}>{children}</span>
 }
 
-export const OverviewTab = ({ monthlyStats, loadingStats, notes, setNotes, handleSaveNotes, isSavingNotes, unit = "R$", statLabel = "Performance" }: any) => {
-    const totalValue = monthlyStats.reduce((acc: number, curr: any) => acc + (curr.value || 0), 0);
-    const lastMonth = monthlyStats[monthlyStats.length - 1]?.value || 0;
+
+export const OverviewTab = ({ 
+    monthlyStats, loadingStats, notes, setNotes, handleSaveNotes, isSavingNotes, 
+    unit = "R$", statLabel = "Performance", kpiData 
+}: any) => {
     
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card className="p-6 relative group">
                     <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><TrendingUp size={48} /></div>
-                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-2">Total Acumulado (6 Meses)</p>
-                    <h3 className="text-3xl font-bold text-white tracking-tight">{unit} {totalValue.toLocaleString('pt-BR')}</h3>
-                    <div className="mt-2 text-xs text-emerald-400 flex items-center gap-1">+12% vs semestre anterior</div>
+                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-2">Total ({statLabel})</p>
+                    <h3 className="text-3xl font-bold text-white tracking-tight">{unit} {kpiData?.total?.toLocaleString('pt-BR') || 0}</h3>
+                    <div className="mt-2 text-xs text-zinc-500 flex items-center gap-1">Dados reais do banco</div>
                 </Card>
 
                 <Card className="p-6 relative group">
-                    <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><Zap size={48} /></div>
-                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-2">Atividade Recente</p>
-                    <h3 className="text-3xl font-bold text-white tracking-tight">{lastMonth} <span className="text-base text-zinc-500 font-normal">interações</span></h3>
-                    <div className="mt-2 text-xs text-blue-400 flex items-center gap-1">Dados deste mês</div>
+                    <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><MessageSquare size={48} /></div>
+                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-2">Interações (30 dias)</p>
+                    <h3 className="text-3xl font-bold text-white tracking-tight">{kpiData?.interactions || 0}</h3>
+                    <div className="mt-2 text-xs text-blue-400 flex items-center gap-1">Mensagens trocadas</div>
                 </Card>
 
                 <Card className="p-6 relative group border-purple-500/20 bg-purple-500/[0.02]">
                     <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><Bot size={48} /></div>
                     <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-2">Status da IA</p>
-                    <h3 className="text-3xl font-bold text-white tracking-tight">Ativo</h3>
-                    <div className="mt-2 text-xs text-zinc-400 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div> Sistema Operacional</div>
+                    <h3 className="text-3xl font-bold text-white tracking-tight flex items-center gap-2">
+                        {kpiData?.botActive ? 'Ativo' : 'Pausado'}
+                        <span className={`w-3 h-3 rounded-full ${kpiData?.botActive ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></span>
+                    </h3>
+                    <div className="mt-2 text-xs text-zinc-400">Sistema {kpiData?.botActive ? 'Operacional' : 'Interrompido'}</div>
                 </Card>
             </div>
 
@@ -62,19 +68,22 @@ export const OverviewTab = ({ monthlyStats, loadingStats, notes, setNotes, handl
                 <Card className="lg:col-span-2 p-6 flex flex-col justify-between min-h-[300px]">
                      <div className="flex justify-between items-center mb-6">
                         <div>
-                            <h4 className="text-white font-bold text-lg">Evolução de {statLabel}</h4>
-                            <p className="text-zinc-500 text-xs">Visão detalhada dos últimos 6 meses.</p>
+                            <h4 className="text-white font-bold text-lg">Evolução Mensal</h4>
+                            <p className="text-zinc-500 text-xs">Histórico dos últimos 6 meses.</p>
                         </div>
-                        <Badge color="blue">Tempo Real</Badge>
+                        <Badge color="blue">Dinâmico</Badge>
                      </div>
-                     <div className="flex-1 w-full flex items-end gap-2 h-48">
+                     <div className="flex-1 w-full flex items-end gap-2 h-48 border-b border-white/5 pb-2">
                         {loadingStats ? <div className="w-full h-full flex items-center justify-center"><Loader2 className="animate-spin text-zinc-600"/></div> : 
+                         monthlyStats.length === 0 || monthlyStats.every((s:any) => s.value === 0) ? 
+                         <div className="w-full h-full flex flex-col items-center justify-center text-zinc-600 text-xs gap-2"><TrendingUp size={24} className="opacity-20"/><span>Sem dados suficientes para o gráfico.</span></div> :
                          monthlyStats.map((stat:any, idx:number) => {
-                             const height = Math.max((stat.value / (Math.max(...monthlyStats.map((s:any)=>s.value)) || 1)) * 100, 5);
+                             const max = Math.max(...monthlyStats.map((s:any)=>s.value)) || 1;
+                             const height = Math.max((stat.value / max) * 100, 5);
                              return (
                                  <div key={idx} className="flex-1 flex flex-col justify-end gap-2 group cursor-pointer">
                                      <div className="w-full bg-zinc-800 rounded-t-sm hover:bg-blue-600 transition-all relative" style={{height: `${height}%`}}>
-                                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-zinc-700 z-10">
+                                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-zinc-700 z-10 font-mono">
                                             {stat.value}
                                         </div>
                                      </div>
@@ -104,6 +113,74 @@ export const OverviewTab = ({ monthlyStats, loadingStats, notes, setNotes, handl
         </div>
     )
 }
+
+
+export const AppointmentsTab = ({appointmentsList, isRealEstate, loadingAppts}: any) => {
+    return (
+        <div className="bg-[#0F0F11] border border-white/10 rounded-xl overflow-hidden animate-in fade-in">
+            {loadingAppts ? (
+                <div className="p-12 flex flex-col items-center justify-center text-zinc-500 gap-3">
+                    <Loader2 className="animate-spin text-blue-500" size={24}/>
+                    <span className="text-xs">Carregando agendamentos...</span>
+                </div>
+            ) : (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-zinc-900 text-zinc-500 uppercase text-xs font-bold border-b border-white/5">
+                            <tr>
+                                <th className="p-4 whitespace-nowrap"><Clock size={12} className="inline mr-1"/> Data/Hora</th>
+                                <th className="p-4"><User size={12} className="inline mr-1"/> Cliente</th>
+                                <th className="p-4">{isRealEstate ? <Home size={12} className="inline mr-1"/> : <Scissors size={12} className="inline mr-1"/>} {isRealEstate ? 'Imóvel' : 'Serviço'}</th>
+                                {isRealEstate && <th className="p-4"><MapPin size={12} className="inline mr-1"/> Bairro</th>}
+                                <th className="p-4">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {appointmentsList.length === 0 ? (
+                                <tr>
+                                    <td colSpan={isRealEstate ? 5 : 4} className="p-12 text-center text-zinc-600">
+                                        <Calendar className="mx-auto mb-2 opacity-50" size={24}/>
+                                        <p>Nenhum agendamento encontrado no banco de dados.</p>
+                                    </td>
+                                </tr>
+                            ) : (
+                                appointmentsList.map((a:any) => (
+                                    <tr key={a.id} className="hover:bg-white/[0.02] transition-colors">
+                                        <td className="p-4 text-zinc-300 font-mono text-xs">
+                                            {new Date(a.appointment_date).toLocaleDateString('pt-BR')} 
+                                            <span className="text-zinc-600 mx-2">|</span> 
+                                            {new Date(a.appointment_date).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="text-white font-bold text-sm">{a.client_name || 'Visitante'}</div>
+                                            <div className="text-[10px] text-zinc-500 font-mono">{a.customer_phone}</div>
+                                        </td>
+                                        <td className="p-4 text-zinc-400 text-sm">
+                                            {isRealEstate 
+                                                ? (a.products?.name || 'Imóvel não identificado') 
+                                                : (a.service_name || a.products?.name || 'Serviço Padrão')
+                                            }
+                                            {isRealEstate && a.products?.property_link && (
+                                                <a href={a.products.property_link} target="_blank" className="ml-2 text-blue-400 hover:underline text-[10px] bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">Link</a>
+                                            )}
+                                        </td>
+                                        {isRealEstate && <td className="p-4 text-zinc-500 text-xs">{a.products?.neighborhood || '-'}</td>}
+                                        <td className="p-4">
+                                            <Badge color={a.status==='confirmed'?'green':a.status==='canceled'?'red':'yellow'}>
+                                                {a.status === 'confirmed' ? 'Confirmado' : a.status === 'canceled' ? 'Cancelado' : 'Pendente'}
+                                            </Badge>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </div>
+    )
+}
+
 
 export const ChatTab = ({ client }: any) => {
   const [contacts, setContacts] = useState<any[]>([])
@@ -301,6 +378,11 @@ export const SettingsTab = ({
       setIsSavingZapi(false);
   }
 
+  const handleOpenQrPage = () => {
+    if (!botConfig.phoneId) { alert("Defina um Nome da Instância (ID) e salve antes de conectar."); return; }
+    router.push(`/dashboard/clients/${client.id}/code?instance=${botConfig.phoneId}`);
+  };
+
   return (
   <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4">
       <div className="xl:col-span-2 space-y-6">
@@ -317,7 +399,7 @@ export const SettingsTab = ({
                             <button onClick={() => setBotConfig({...botConfig, isActive: !botConfig.isActive})} className={`relative w-12 h-6 rounded-full transition-all duration-300 ${botConfig.isActive ? 'bg-emerald-500' : 'bg-zinc-700'}`}>
                                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 shadow-sm ${botConfig.isActive ? 'left-7' : 'left-1'}`}></div>
                             </button>
-                            <span className={`text-sm font-medium ${botConfig.isActive ? 'text-emerald-400' : 'text-zinc-500'}`}>{botConfig.isActive ? 'Ativo e Respondendo' : 'Desativado'}</span>
+                            <span className={`text-sm font-medium ${botConfig.isActive ? 'text-emerald-400' : 'text-zinc-500'}`}>{botConfig.isActive ? 'Ativo' : 'Inativo'}</span>
                         </div>
                     </div>
                     {role === 'super_admin' && (
@@ -344,6 +426,15 @@ export const SettingsTab = ({
                         </div>
                         <input type="text" className="w-full bg-[#18181b] border border-white/10 rounded-lg p-2.5 text-zinc-300 text-sm focus:border-blue-500/50" value={botConfig.openingHours} onChange={e => setBotConfig({...botConfig, openingHours: e.target.value})} />
                     </div>
+                    {role === 'super_admin' && (
+                        <div className="space-y-2 pt-2">
+                            <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-bold text-green-500 uppercase flex items-center gap-1"><Smartphone size={12}/> ID da Instância</label>
+                                <button type="button" onClick={handleOpenQrPage} disabled={!botConfig.phoneId} className="text-[10px] bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-1 rounded hover:bg-green-500/20 flex items-center gap-1 disabled:opacity-50"><QrCode size={12}/> Abrir QR Code</button>
+                            </div>
+                            <input className="w-full bg-[#18181b] border border-white/10 rounded-lg p-2.5 text-zinc-300 text-sm font-mono" value={botConfig.phoneId} onChange={e => setBotConfig({...botConfig, phoneId: e.target.value})} placeholder="Ex: imobiliaria_client_01"/>
+                        </div>
+                    )}
                     {(botConfig.planLevel.includes('ZyCore') || role === 'super_admin') && (
                         <div className="space-y-2 pt-2">
                             <label className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1"><Brain size={12}/> Personalidade (Persona)</label>
@@ -418,7 +509,7 @@ export const SettingsTab = ({
                     <div className="space-y-1">
                         <label className="text-[10px] font-bold text-zinc-500 uppercase">Pagamento</label>
                         <select disabled={!isEditing} className="w-full bg-[#18181b] border border-white/10 rounded px-3 py-2 text-sm text-white disabled:opacity-50" value={editForm.payment_method} onChange={e => setEditForm({...editForm, payment_method: e.target.value})}>
-                            <option value="pix">PIX</option><option value="boleto">Boleto</option><option value="cartao">Cartão de Crédito</option>
+                            <option value="pix">PIX</option><option value="boleto">Boleto</option><option value="cartao">Cartão</option>
                         </select>
                     </div>
                     {isEditing && <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded text-xs font-bold">Salvar Contrato</button>}
@@ -429,76 +520,6 @@ export const SettingsTab = ({
   )
 }
 
-export const NotificationsTab = ({ notifications, markAsRead, loadingNotifications, fetchNotifications }: any) => (
-  <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in">
-     <div className="flex justify-between items-center mb-4"><h3 className="text-white font-bold text-lg">Notificações</h3><button onClick={fetchNotifications} className="text-zinc-500 hover:text-white"><RefreshCcw size={16}/></button></div>
-     {loadingNotifications ? <div className="text-center text-zinc-600 py-10">Carregando...</div> : 
-      notifications.length === 0 ? <div className="text-center py-10 border border-dashed border-white/10 rounded-xl"><Bell className="mx-auto mb-2 text-zinc-700"/><p className="text-zinc-500 text-sm">Nenhuma notificação.</p></div> :
-      notifications.map((n:any) => (
-          <div key={n.id} className="bg-[#0F0F11] border border-white/10 p-4 rounded-xl flex gap-4">
-              <div className="text-red-500 mt-1"><Bell size={16}/></div>
-              <div className="flex-1">
-                  <p className="text-sm text-zinc-200">{n.content}</p>
-                  <p className="text-xs text-zinc-600 mt-1">{new Date(n.created_at).toLocaleString()}</p>
-                  <div className="flex gap-4 mt-2"><button onClick={()=>markAsRead(n.id)} className="text-xs text-blue-400 font-bold">Marcar como lido</button><a href={`https://wa.me/${n.customer_phone}`} target="_blank" className="text-xs text-emerald-400 font-bold">WhatsApp</a></div>
-              </div>
-          </div>
-      ))
-     }
-  </div>
-)
-
-export const CatalogTab = ({ client, isRealEstate, products, setIsProductModalOpen, labels, toggleProductStatus, handleDeleteProduct }: any) => (
-    <div className="space-y-6 animate-in fade-in">
-        <div className="flex justify-between items-center">
-            <h2 className="text-xl font-bold text-white">{isRealEstate ? 'Imóveis' : 'Catálogo'}</h2>
-            <button onClick={() => setIsProductModalOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"><Plus size={16}/> {labels.add}</button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {products.map((p:any) => (
-                <div key={p.id} className="bg-[#0F0F11] border border-white/10 p-4 rounded-xl group hover:border-blue-500/30 transition-all">
-                    <div className="flex justify-between items-start mb-2">
-                        <Badge color="gray">{p.category}</Badge>
-                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={()=>toggleProductStatus(p)} className="text-zinc-500 hover:text-emerald-500"><Power size={16}/></button><button onClick={()=>handleDeleteProduct(p.id)} className="text-zinc-500 hover:text-red-500"><Trash2 size={16}/></button></div>
-                    </div>
-                    <h4 className="font-bold text-white truncate">{p.name}</h4>
-                    <p className="text-emerald-400 font-mono text-sm mt-1">R$ {p.price}</p>
-                    {isRealEstate && <p className="text-zinc-500 text-xs mt-1 flex items-center gap-1"><MapPin size={10}/> {p.neighborhood}</p>}
-                </div>
-            ))}
-        </div>
-    </div>
-)
-
-export const AppointmentsTab = ({appointmentsList, isRealEstate}: any) => (
-    <div className="bg-[#0F0F11] border border-white/10 rounded-xl overflow-hidden animate-in fade-in">
-        <table className="w-full text-left text-sm">
-            <thead className="bg-zinc-900 text-zinc-500 uppercase text-xs font-bold"><tr><th className="p-4">Data</th><th className="p-4">Cliente</th><th className="p-4">Item</th><th className="p-4">Status</th></tr></thead>
-            <tbody className="divide-y divide-white/5">
-                {appointmentsList.map((a:any) => (
-                    <tr key={a.id} className="hover:bg-white/[0.02]">
-                        <td className="p-4 text-zinc-300 font-mono">{new Date(a.appointment_date).toLocaleDateString()}</td>
-                        <td className="p-4 text-white font-bold">{a.client_name || a.customer_phone}</td>
-                        <td className="p-4 text-zinc-400">{isRealEstate ? a.products?.name : a.service_name}</td>
-                        <td className="p-4"><Badge color={a.status==='confirmed'?'green':a.status==='canceled'?'red':'yellow'}>{a.status}</Badge></td>
-                    </tr>
-                ))}
-            </tbody>
-        </table>
-    </div>
-)
-
-export const OrdersTab = ({ clientOrders, handleAdvanceStatus, handleCancelOrder }: any) => (
-     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in">
-         {clientOrders.map((o:any) => (
-             <div key={o.id} className="bg-[#0F0F11] border border-white/10 p-5 rounded-xl flex flex-col justify-between">
-                 <div>
-                     <div className="flex justify-between items-start mb-3"><h4 className="font-bold text-white">{o.customer_name}</h4><Badge color="blue">{o.status}</Badge></div>
-                     <p className="text-zinc-500 text-xs mb-4 flex items-center gap-1"><Clock size={12}/> {new Date(o.created_at).toLocaleTimeString()}</p>
-                     <div className="space-y-1 mb-4">{Array.isArray(o.items_json) && o.items_json.map((i:any, idx:number)=>(<div key={idx} className="flex justify-between text-xs text-zinc-300"><span>{i.qty}x {i.name}</span><span>R$ {i.price}</span></div>))}</div>
-                 </div>
-                 <div className="pt-4 border-t border-white/5 flex gap-2"><button onClick={()=>handleAdvanceStatus(o)} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg text-xs font-bold">Avançar</button><button onClick={()=>handleCancelOrder(o.id)} className="px-3 bg-zinc-800 hover:bg-red-500/20 text-zinc-400 hover:text-red-400 rounded-lg"><X size={14}/></button></div>
-             </div>
-         ))}
-     </div>
-)
+export const NotificationsTab = ({ notifications, markAsRead, loadingNotifications, fetchNotifications }: any) => ( <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in"> <div className="flex justify-between items-center mb-4"><h3 className="text-white font-bold text-lg">Notificações</h3><button onClick={fetchNotifications} className="text-zinc-500 hover:text-white"><RefreshCcw size={16}/></button></div> {loadingNotifications ? <div className="text-center text-zinc-600 py-10">Carregando...</div> : notifications.length === 0 ? <div className="text-center py-10 border border-dashed border-white/10 rounded-xl"><Bell className="mx-auto mb-2 text-zinc-700"/><p className="text-zinc-500 text-sm">Nenhuma notificação.</p></div> : notifications.map((n:any) => ( <div key={n.id} className="bg-[#0F0F11] border border-white/10 p-4 rounded-xl flex gap-4"> <div className="text-red-500 mt-1"><Bell size={16}/></div> <div className="flex-1"> <p className="text-sm text-zinc-200">{n.content}</p> <div className="flex gap-4 mt-2"><button onClick={()=>markAsRead(n.id)} className="text-xs text-blue-400 font-bold">Marcar como lido</button></div> </div> </div> )) } </div> )
+export const CatalogTab = ({ client, isRealEstate, products, setIsProductModalOpen, labels, toggleProductStatus, handleDeleteProduct }: any) => ( <div className="space-y-6 animate-in fade-in"> <div className="flex justify-between items-center"> <h2 className="text-xl font-bold text-white">{isRealEstate ? 'Imóveis' : 'Catálogo'}</h2> <button onClick={() => setIsProductModalOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"><Plus size={16}/> {labels.add}</button> </div> <div className="grid grid-cols-1 md:grid-cols-3 gap-4"> {products.map((p:any) => ( <div key={p.id} className="bg-[#0F0F11] border border-white/10 p-4 rounded-xl group hover:border-blue-500/30 transition-all"> <div className="flex justify-between items-start mb-2"> <Badge color="gray">{p.category}</Badge> <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={()=>toggleProductStatus(p)} className="text-zinc-500 hover:text-emerald-500"><Power size={16}/></button><button onClick={()=>handleDeleteProduct(p.id)} className="text-zinc-500 hover:text-red-500"><Trash2 size={16}/></button></div> </div> <h4 className="font-bold text-white truncate">{p.name}</h4> <p className="text-emerald-400 font-mono text-sm mt-1">R$ {p.price}</p> </div> ))} </div> </div> )
+export const OrdersTab = ({ clientOrders, handleAdvanceStatus, handleCancelOrder }: any) => ( <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in"> {clientOrders.map((o:any) => ( <div key={o.id} className="bg-[#0F0F11] border border-white/10 p-5 rounded-xl flex flex-col justify-between"> <div> <div className="flex justify-between items-start mb-3"><h4 className="font-bold text-white">{o.customer_name}</h4><Badge color="blue">{o.status}</Badge></div> <div className="space-y-1 mb-4">{Array.isArray(o.items_json) && o.items_json.map((i:any, idx:number)=>(<div key={idx} className="flex justify-between text-xs text-zinc-300"><span>{i.qty}x {i.name}</span><span>R$ {i.price}</span></div>))}</div> </div> <div className="pt-4 border-t border-white/5 flex gap-2"><button onClick={()=>handleAdvanceStatus(o)} className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-xs font-bold">Avançar</button></div> </div> ))} </div> )
