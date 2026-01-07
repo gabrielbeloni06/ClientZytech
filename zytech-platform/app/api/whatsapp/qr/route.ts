@@ -1,15 +1,43 @@
+import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+
+// Inicializa o Supabase com a Service Key para ter permissão de ler tokens sensíveis
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY! 
+const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 export async function GET(request: Request) {
   try {
-    // --- CREDENCIAIS Z-API ---
-    const INSTANCE_ID = '3ECD19678C8703E97D4572442EF70706'
-    const INSTANCE_TOKEN = '6D5F55C706D38E75CA716748'
-    const CLIENT_TOKEN = 'F7a09e770fcca44daab11e9536ea32284S' 
+    const { searchParams } = new URL(request.url)
+    const orgId = searchParams.get('orgId')
 
-    console.log(`🔄 [Backend] Buscando IMAGEM...`)
+    if (!orgId) {
+      return NextResponse.json({ error: 'ID da organização é obrigatório' }, { status: 400 })
+    }
 
-    // Endpoint de imagem
+    console.log(`🔄 [Backend] Buscando credenciais para Org: ${orgId}...`)
+
+    // 1. Busca as credenciais no banco de dados
+    const { data: org, error: dbError } = await supabase
+      .from('organizations')
+      .select('zapi_instance_id, zapi_token, zapi_client_token')
+      .eq('id', orgId)
+      .single()
+
+    if (dbError || !org) {
+      console.error('Erro DB:', dbError)
+      return NextResponse.json({ error: 'Organização não encontrada ou sem credenciais.' }, { status: 404 })
+    }
+
+    if (!org.zapi_instance_id || !org.zapi_token) {
+      return NextResponse.json({ error: 'Instância Z-API não configurada para este cliente.' }, { status: 400 })
+    }
+
+    const INSTANCE_ID = org.zapi_instance_id
+    const INSTANCE_TOKEN = org.zapi_token
+    const CLIENT_TOKEN = org.zapi_client_token // Agora vem do banco!
+
+    // Endpoint de imagem com timestamp para evitar cache
     const zApiUrl = `https://api.z-api.io/instances/${INSTANCE_ID}/token/${INSTANCE_TOKEN}/qr-code/image?_t=${Date.now()}`
     
     const headers: Record<string, string> = {
@@ -22,6 +50,7 @@ export async function GET(request: Request) {
         headers['Client-Token'] = CLIENT_TOKEN
     }
 
+    // Faz a chamada para a Z-API
     const response = await fetch(zApiUrl, {
       method: 'GET',
       headers: headers,
@@ -29,37 +58,33 @@ export async function GET(request: Request) {
     })
 
     const contentType = response.headers.get('content-type') || 'unknown'
-    console.log(`📡 Status: ${response.status} | Tipo: ${contentType}`)
+    // console.log(`📡 Status: ${response.status} | Tipo: ${contentType}`)
 
-    // 1. Tratamento de Erros HTTP óbvios
-    if (response.status === 404) return NextResponse.json({ error: 'Instância 404: Verifique ID da Instância.' }, { status: 404 })
-    if (response.status === 401) return NextResponse.json({ error: 'Erro 401: Token inválido ou bloqueado.' }, { status: 401 })
+    // 2. Tratamento de Erros HTTP óbvios
+    if (response.status === 404) return NextResponse.json({ error: 'Instância 404 na Z-API (Verifique o ID no Banco).' }, { status: 404 })
+    if (response.status === 401) return NextResponse.json({ error: 'Erro 401 Z-API: Token inválido.' }, { status: 401 })
 
-    // 2. Se a Z-API devolveu JSON em vez de Imagem (Aqui que estava o problema)
+    // 3. Se a Z-API devolveu JSON em vez de Imagem (Lógica blindada)
     if (contentType.includes('application/json')) {
         const json = await response.json()
-        console.log('📦 JSON recebido da Z-API:', JSON.stringify(json))
-
+        
         if (json.connected) {
             return NextResponse.json({ connected: true })
         }
         
-        // CORREÇÃO: Às vezes a Z-API devolve o base64 dentro do JSON 'value' mesmo na rota de imagem
         if (json.value) {
              let rawBase64 = json.value;
-             // Limpeza se necessário
              if (!rawBase64.startsWith('data:image')) {
                 rawBase64 = `data:image/png;base64,${rawBase64}`;
              }
              return NextResponse.json({ qr: rawBase64, connected: false })
         }
 
-        // Se for um JSON de erro mas veio com status 200, forçamos um erro 422 para o frontend pegar
         const errorStatus = (!response.status || response.status < 400) ? 422 : response.status;
         return NextResponse.json({ error: 'Z-API retornou JSON inesperado.', details: json }, { status: errorStatus })
     }
 
-    // 3. Leitura do binário (Imagem Real)
+    // 4. Leitura do binário (Imagem Real)
     const imageBuffer = await response.arrayBuffer()
 
     // Verificação de segurança: HTML disfarçado
