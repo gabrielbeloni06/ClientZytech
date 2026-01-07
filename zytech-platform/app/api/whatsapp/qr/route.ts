@@ -48,7 +48,14 @@ export async function GET(request: Request) {
 
     // 2. Caso: QR Code recebido com sucesso
     if (data.value) {
-        return NextResponse.json({ qr: data.value, connected: false })
+        let qrImage = data.value;
+        
+        // CORREÇÃO: Garante que o base64 tenha o cabeçalho correto para o navegador exibir
+        if (!qrImage.startsWith('data:image')) {
+            qrImage = `data:image/png;base64,${qrImage}`;
+        }
+
+        return NextResponse.json({ qr: qrImage, connected: false })
     }
 
     // 3. Caso: Erro genérico
