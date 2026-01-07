@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { botRealEstateControl } from "@/lib/bots/templates/core/real_estate";
 
-export const runtime = "nodejs";
-export const maxDuration = 60;
+export const runtime = "nodejs"; 
+export const maxDuration = 60; 
 
 async function sendZapiMessage(
   phone: string,
@@ -46,35 +46,39 @@ async function sendZapiMessage(
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    if (!body || body.fromMe || body.isGroup || body.type === "e2e_notification" || body.type === "call_log") {
+      return NextResponse.json({ ok: true });
+    }
+
+    const customerPhone = body.phone;
+    const instanceId = body.instanceId;
+    const messageId = body.messageId; 
     
-    console.log("Webhook Payload recebido:", JSON.stringify(body?.instanceId ? { instanceId: body.instanceId } : body, null, 2));
+    const text = body.text?.message || body.body || body.caption || "";
 
-    const msg = body; 
-    if (!msg || msg.fromMe || msg.isGroup || msg.type === "e2e_notification") {
+    if (!customerPhone || !instanceId || !text.trim()) {
       return NextResponse.json({ ok: true });
     }
 
-    const customerPhone = msg.phone;
-    if (!customerPhone) return NextResponse.json({ ok: true });
-
-    const text = msg.text?.message || msg.body || "";
-    if (!text.trim()) {
-      return NextResponse.json({ ok: true });
-    }
-
-    const customerName = msg.senderName || "Visitante";
-    
-    const instanceId = msg.instanceId || body.instanceId;
-
-    if (!instanceId) {
-      console.error("ERRO: Instance ID não identificado no webhook.");
-      return NextResponse.json({ ok: true });
-    }
+    const customerName = body.senderName || "Visitante";
 
     const supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
+
+    if (messageId) {
+        const { data: existingMsg } = await supabase
+            .from("messages")
+            .select("id")
+            .eq("message_id", messageId) 
+            .single();
+        
+        if (existingMsg) {
+            console.log("🔁 Mensagem duplicada ignorada.");
+            return NextResponse.json({ ok: true });
+        }
+    }
 
     const { data: org, error: orgError } = await supabase
       .from("organizations")
@@ -83,9 +87,16 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (orgError || !org) {
-      console.error(`Organização não encontrada para a instância Z-API: ${instanceId}`);
+      console.error(`⚠️ Org não encontrada para Instância: ${instanceId}`);
       return NextResponse.json({ ok: true });
     }
+
+    const { data: customer } = await supabase
+        .from("customers")
+        .select("is_bot_paused")
+        .eq("organization_id", org.id)
+        .eq("phone", customerPhone)
+        .single();
 
     await supabase.from("messages").insert({
       org_id: org.id,
@@ -94,13 +105,17 @@ export async function POST(req: NextRequest) {
       content: text,
     });
 
+    if (customer?.is_bot_paused) {
+        console.log(`⏸️ Bot pausado para ${customerPhone}. Silenciando.`);
+        return NextResponse.json({ ok: true });
+    }
+
     const { data: history } = await supabase
       .from("messages")
       .select("role, content")
       .eq("org_id", org.id)
       .eq("customer_phone", customerPhone)
       .order("created_at", { ascending: false })
-      .limit(15);
 
     const conversationHistory = history ? history.reverse() : [];
 
@@ -140,7 +155,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
 
   } catch (err) {
-    console.error("ERRO CRÍTICO no Webhook:", err);
+    console.error("❌ ERRO NO WEBHOOK:", err);
     return NextResponse.json({ ok: true });
   }
 }
