@@ -38,17 +38,29 @@ export default function QrCodePage() {
       const response = await fetch(`/api/whatsapp/qr?orgId=${clientId}&t=${Date.now()}`)
       
       if (!response.ok) {
-        const errData = await response.json()
-        throw new Error(errData.details || errData.error || 'Erro desconhecido na Z-API')
+        let errorMessage = 'Erro desconhecido';
+        try {
+            const errData = await response.json();
+            if (JSON.stringify(errData).includes("connected")) {
+                errorMessage = "Esta instância já está conectada!";
+            } else {
+                errorMessage = errData.details || errData.error || `Erro ${response.status}`;
+            }
+        } catch (e) {
+            errorMessage = `Erro na API: ${response.statusText}`;
+        }
+        throw new Error(errorMessage)
       }
 
       const blob = await response.blob()
+      if (blob.size === 0) throw new Error("Imagem vazia recebida da API");
+      
       const objectUrl = URL.createObjectURL(blob)
       setQrUrl(objectUrl)
 
     } catch (err: any) {
       console.error(err)
-      setError(err.message || 'Falha ao carregar QR Code')
+      setError(err.message)
     } finally {
       setLoading(false)
     }
@@ -76,9 +88,9 @@ export default function QrCodePage() {
                 Escaneie o código para conectar o bot da <strong>{clientName || 'Empresa'}</strong>.
             </p>
 
-            <div className="bg-white p-4 rounded-xl shadow-inner mb-6 relative w-64 h-64 flex items-center justify-center">
+            <div className="bg-white p-4 rounded-xl shadow-inner mb-6 relative w-64 h-64 flex items-center justify-center overflow-hidden">
                 {loading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/90 z-10 rounded-xl">
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/90 z-20">
                         <div className="flex flex-col items-center gap-2">
                             <Loader2 className="animate-spin text-green-600" size={32}/>
                             <span className="text-xs text-zinc-500 font-bold">Gerando QR...</span>
@@ -87,10 +99,10 @@ export default function QrCodePage() {
                 )}
                 
                 {error ? (
-                    <div className="text-red-600 text-xs px-2 flex flex-col items-center gap-2">
-                        <AlertTriangle size={32}/>
-                        <span className="font-bold text-center">{error}</span>
-                        <span className="text-[10px] text-zinc-500 text-center">Verifique as credenciais no painel admin.</span>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-red-600 px-4 bg-white z-10">
+                        <AlertTriangle size={32} className="mb-2"/>
+                        <span className="text-xs font-bold text-center break-words w-full">{error}</span>
+                        <span className="text-[10px] text-zinc-500 text-center mt-2">Verifique o Token/ID no painel.</span>
                     </div>
                 ) : qrUrl && (
                     <img 
