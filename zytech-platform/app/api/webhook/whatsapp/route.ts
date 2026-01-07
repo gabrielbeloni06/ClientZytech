@@ -46,6 +46,7 @@ async function sendZapiMessage(
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    
     if (!body || body.fromMe || body.isGroup || body.type === "e2e_notification" || body.type === "call_log") {
       return NextResponse.json({ ok: true });
     }
@@ -53,7 +54,6 @@ export async function POST(req: NextRequest) {
     const customerPhone = body.phone;
     const instanceId = body.instanceId;
     const messageId = body.messageId; 
-    
     const text = body.text?.message || body.body || body.caption || "";
 
     if (!customerPhone || !instanceId || !text.trim()) {
@@ -62,21 +62,28 @@ export async function POST(req: NextRequest) {
 
     const customerName = body.senderName || "Visitante";
 
-    const supabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const sbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL; 
+    const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY; 
 
+    if (!sbUrl || !sbKey) {
+        console.error("❌ ERRO CRÍTICO: Variáveis de ambiente do Supabase não encontradas.");
+        // Retorna OK para não travar a fila da Z-API
+        return NextResponse.json({ ok: true });
+    }
+
+    const supabase = createClient(sbUrl, sbKey);
     if (messageId) {
-        const { data: existingMsg } = await supabase
-            .from("messages")
-            .select("id")
-            .eq("message_id", messageId) 
-            .single();
-        
-        if (existingMsg) {
-            console.log("🔁 Mensagem duplicada ignorada.");
-            return NextResponse.json({ ok: true });
+        try {
+            const { data: existingMsg } = await supabase
+                .from("messages")
+                .select("id")
+                .eq("message_id", messageId) 
+                .maybeSingle(); 
+            
+            if (existingMsg) {
+                return NextResponse.json({ ok: true });
+            }
+        } catch (e) {
         }
     }
 
@@ -96,17 +103,18 @@ export async function POST(req: NextRequest) {
         .select("is_bot_paused")
         .eq("organization_id", org.id)
         .eq("phone", customerPhone)
-        .single();
+        .maybeSingle();
 
     await supabase.from("messages").insert({
       org_id: org.id,
       customer_phone: customerPhone,
       role: "user",
       content: text,
+      message_id: messageId 
     });
 
     if (customer?.is_bot_paused) {
-        console.log(`⏸️ Bot pausado para ${customerPhone}. Silenciando.`);
+        console.log(`⏸️ Bot pausado para ${customerPhone}.`);
         return NextResponse.json({ ok: true });
     }
 
@@ -116,6 +124,7 @@ export async function POST(req: NextRequest) {
       .eq("org_id", org.id)
       .eq("customer_phone", customerPhone)
       .order("created_at", { ascending: false })
+      .limit(10); 
 
     const conversationHistory = history ? history.reverse() : [];
 

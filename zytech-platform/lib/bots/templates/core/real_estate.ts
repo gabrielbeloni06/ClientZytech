@@ -38,7 +38,7 @@ export async function botRealEstateControl(
     .select('id, name, price, address, neighborhood, city, property_details, property_link, category')
     .eq('organization_id', orgId)
     .eq('is_available', true) 
-    .limit(15);
+    .limit(15); 
 
   const propertiesText = properties && properties.length > 0
     ? properties.map(p => `
@@ -69,36 +69,38 @@ export async function botRealEstateControl(
   const systemPrompt = `
     ${aiPersona}
     
-    [CONTEXTO]
-    Data: ${currentDateString}
+    [CONTEXTO ATUAL]
+    Data e Hora: ${currentDateString}
     Cliente: ${customerName || 'Visitante'} (Tel: ${customerPhone})
     
-    [DADOS]
-    FAQ: ${aiFaq}
-    IMÓVEIS: 
+    [BASE DE CONHECIMENTO]
+    FAQ da Empresa: ${aiFaq}
+    
+    [LISTA DE IMÓVEIS DISPONÍVEIS]
     ${propertiesText}
     
-    [AGENDA]
-    Funcionamento: ${openingHours}
-    Ocupados: [${busySlotsText}]
+    [DISPONIBILIDADE DE AGENDA]
+    Horário de Funcionamento: ${openingHours}
+    Horários JÁ Ocupados (Não agendar nestes): [${busySlotsText}]
 
     [SUA MISSÃO]
-    Atender o cliente, tirar dúvidas sobre os imóveis listados e agendar visita.
+    Atender o cliente, tirar dúvidas sobre os imóveis listados e tentar agendar uma visita.
+    Seja persuasivo, educado e profissional.
 
-    [REGRAS DE OURO - SEGURANÇA]
+    [REGRAS DE OURO - SEGURANÇA & NEGOCIAÇÃO]
     1. PROIBIDO NEGOCIAR VALORES: Você NÃO tem autorização para dar descontos, aceitar contrapropostas ou negociar o preço listado.
     2. SE O CLIENTE PEDIR DESCONTO: Diga educadamente que não tem alçada para alterar valores e use a tag de transferência IMEDIATAMENTE: [TRANSFER_TO_AGENT: Tentativa de Negociação].
-    3. JAMAIS invente imóveis que não estão na lista acima.
-    4. Respostas curtas e objetivas.
+    3. JAMAIS invente imóveis que não estão na lista acima. Se não estiver na lista, diga que não temos no momento.
+    4. Mantenha respostas curtas e objetivas (máximo 2 parágrafos).
 
-    [COMANDOS]
-    - Transferir: [TRANSFER_TO_AGENT: Motivo]
-    - Agendar: [VISITA_CONFIRMADA: YYYY-MM-DDTHH:MM:SS|ID_IMOVEL|NOME]
+    [COMANDOS DO SISTEMA]
+    - Para transferir para humano: [TRANSFER_TO_AGENT: Motivo Resumido]
+    - Para confirmar agendamento: [VISITA_CONFIRMADA: YYYY-MM-DDTHH:MM:SS|ID_IMOVEL_OU_NULL|NOME_DO_IMOVEL]
   `;
 
   const messages = [
     { role: "system", content: systemPrompt },
-    ...history.slice(-6),
+    ...history.slice(-6), 
     { role: "user", content: text }
   ];
 
@@ -125,15 +127,19 @@ export async function botRealEstateControl(
             content: `Humano Solicitado. Motivo: ${reason}`,
             is_read: false
         });
+
+        await supabase.from('customers')
+            .update({ is_bot_paused: true })
+            .eq('organization_id', orgId)
+            .eq('phone', customerPhone);
         
         const cleanResponse = aiResponse.replace(/\[TRANSFER_TO_AGENT.*?\]/, "").trim();
         return { 
-            response: cleanResponse || "Essa questão de valores foge da minha alçada. Vou chamar um gerente para falar com você.", 
+            response: cleanResponse || "Entendi. Vou transferir seu atendimento para um de nossos especialistas. Um momento, por favor.", 
             action: "transfer"
         };
     }
 
-    // --- 7. Processamento de Agendamento ---
     const confirmationMatch = aiResponse.match(/\[VISITA_CONFIRMADA:\s*(.*?)\|(.*?)\|(.*?)\]/);
     if (confirmationMatch) {
         const dateString = confirmationMatch[1].trim();
@@ -158,7 +164,7 @@ export async function botRealEstateControl(
             customer_phone: customerPhone,
             customer_name: customerName || 'Visitante',
             type: 'scheduled',
-            content: `Visita: ${new Date(dateString).toLocaleDateString('pt-BR')} - ${productName}`,
+            content: `Visita Agendada: ${new Date(dateString).toLocaleDateString('pt-BR')} - ${productName}`,
             is_read: false
         });
 
@@ -170,6 +176,6 @@ export async function botRealEstateControl(
 
   } catch (error) {
     console.error("Erro AI:", error);
-    return { response: "Tive um lapso de conexão. Pode repetir?", action: "error" };
+    return { response: "Desculpe, tive um lapso momentâneo. Poderia repetir?", action: "error" };
   }
 }
