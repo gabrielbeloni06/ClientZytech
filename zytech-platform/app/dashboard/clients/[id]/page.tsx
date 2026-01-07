@@ -126,7 +126,6 @@ export default function ClientDetailsPage() {
             alert('Nenhuma agenda encontrada para sincronizar.');
             return;
         }
-        
         const days = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']; 
         let text = '';
         [...schedules].sort((a, b) => a.day_of_week - b.day_of_week).forEach(s => {
@@ -136,16 +135,14 @@ export default function ClientDetailsPage() {
             }
         })
         const finalSchedule = text.trim();
-        
         if (finalSchedule) {
             setBotConfig(prev => ({ ...prev, openingHours: finalSchedule }));
-            alert('Horários sincronizados com sucesso! Clique em Salvar para persistir.');
+            alert('Horários sincronizados com sucesso!');
         } else {
             alert('A agenda existe mas não tem horários ativos.');
         }
     } catch (error) { 
-        console.error(error); 
-        alert('Erro ao sincronizar agenda.');
+        console.error(error); alert('Erro ao sincronizar agenda.');
     } finally { 
         setIsSyncingSchedule(false) 
     }
@@ -183,7 +180,6 @@ export default function ClientDetailsPage() {
   async function fetchDashboardMetrics() {
       setLoadingStats(true)
       let total = 0
-      
       if (client.business_type === 'delivery' || client.business_type === 'commerce') {
           const { data: orders } = await supabase.from('orders').select('total_value').eq('organization_id', client.id)
           total = orders?.reduce((acc, curr) => acc + (curr.total_value || 0), 0) || 0
@@ -191,7 +187,6 @@ export default function ClientDetailsPage() {
           const { count } = await supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('organization_id', client.id).eq('status', 'confirmed')
           total = count || 0
       }
-
       const today = new Date()
       const thirtyDaysAgo = new Date(today.setDate(today.getDate() - 30)).toISOString()
       const { count: msgCount } = await supabase.from('chat_messages').select('*', { count: 'exact', head: true }).eq('organization_id', client.id).gte('created_at', thirtyDaysAgo)
@@ -199,13 +194,11 @@ export default function ClientDetailsPage() {
       const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5); sixMonthsAgo.setDate(1);
       const tableToQuery = (client.business_type === 'delivery' || client.business_type === 'commerce') ? 'orders' : 'appointments';
       const dateField = tableToQuery === 'orders' ? 'created_at' : 'appointment_date';
-      
       const { data: graphData } = await supabase.from(tableToQuery).select(dateField).eq('organization_id', client.id).gte(dateField, sixMonthsAgo.toISOString());
       
       const monthNames = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"]
       let monthlyData: any = {};
       for (let i = 0; i < 6; i++) { const d = new Date(); d.setMonth(d.getMonth() - i); monthlyData[monthNames[d.getMonth()]] = 0; }
-      
       if (graphData) {
           graphData.forEach((item: any) => {
               const d = new Date(item[dateField]);
@@ -213,9 +206,7 @@ export default function ClientDetailsPage() {
               if (monthlyData.hasOwnProperty(key)) monthlyData[key]++;
           });
       }
-      
       const chartStats = Object.entries(monthlyData).map(([label, value]) => ({ label, value })).reverse();
-
       setKpiData({ total, interactions: msgCount || 0, botActive: client.bot_status })
       setMonthlyStats(chartStats)
       setLoadingStats(false)

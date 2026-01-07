@@ -8,7 +8,7 @@ import {
   ChefHat, Phone, Calendar, ExternalLink, MessageCircle, Filter, User, Link as LinkIcon,
   ShoppingCart, List, X, Settings, Brain, Trash2, ArrowRight, HelpCircle, Bell, UserPlus,
   MessageSquare, Search, Send, Loader2, QrCode, Smartphone, ArrowUpRight, Ban, Play, ShieldAlert,
-  Zap, Eye, Key, Lock, CreditCard
+  Zap, Eye, Key, CreditCard, Lock
 } from 'lucide-react'
 
 
@@ -31,11 +31,7 @@ const Badge = ({ children, color = "gray" }: any) => {
 }
 
 
-export const OverviewTab = ({ 
-    monthlyStats, loadingStats, notes, setNotes, handleSaveNotes, isSavingNotes, 
-    unit = "R$", statLabel = "Performance", kpiData 
-}: any) => {
-    
+export const OverviewTab = ({ monthlyStats, loadingStats, notes, setNotes, handleSaveNotes, isSavingNotes, unit = "R$", statLabel = "Performance", kpiData }: any) => {
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -43,7 +39,7 @@ export const OverviewTab = ({
                     <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><TrendingUp size={48} /></div>
                     <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-2">Total ({statLabel})</p>
                     <h3 className="text-3xl font-bold text-white tracking-tight">{unit} {kpiData?.total?.toLocaleString('pt-BR') || 0}</h3>
-                    <div className="mt-2 text-xs text-zinc-500 flex items-center gap-1">Dados reais do banco</div>
+                    <div className="mt-2 text-xs text-emerald-400 flex items-center gap-1">Dados reais do banco</div>
                 </Card>
 
                 <Card className="p-6 relative group">
@@ -181,7 +177,6 @@ export const AppointmentsTab = ({appointmentsList, isRealEstate, loadingAppts}: 
     )
 }
 
-
 export const ChatTab = ({ client }: any) => {
   const [contacts, setContacts] = useState<any[]>([])
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null)
@@ -276,7 +271,7 @@ export const ChatTab = ({ client }: any) => {
       setActiveCustomer(contact)
   }
 
-  if (!client.zapi_instance_id && !client.whatsapp_phone_id) {
+  if (!client.zapi_instance_id) {
       return (
           <div className="h-[500px] flex flex-col items-center justify-center bg-[#0F0F11] border border-white/10 rounded-xl p-6 text-center">
               <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mb-4 text-zinc-500"><Smartphone size={32}/></div>
@@ -361,27 +356,44 @@ export const ChatTab = ({ client }: any) => {
   )
 }
 
+
 export const SettingsTab = ({ 
     role, botConfig, setBotConfig, syncScheduleFromDb, isSyncingSchedule, handleSaveBotConfig, 
     isSavingBot, isEditing, setIsEditing, editForm, setEditForm, handleUpdateClient, 
     filteredTemplates, client, openLoginModal, openPasswordModal 
 }: any) => {
-  const router = useRouter(); 
-  const [zapiForm, setZapiForm] = useState({ instanceId: client.zapi_instance_id || '', token: client.zapi_token || '', clientToken: client.zapi_client_token || '' });
+  const router = useRouter();
+  
+  const [zapiForm, setZapiForm] = useState({
+      instanceId: client.zapi_instance_id || '',
+      token: client.zapi_token || '',
+      clientToken: client.zapi_client_token || ''
+  });
   const [isSavingZapi, setIsSavingZapi] = useState(false);
 
   const handleSaveZapiKeys = async () => {
       if (role !== 'super_admin') return;
       setIsSavingZapi(true);
-      const { error } = await supabase.from('organizations').update({ zapi_instance_id: zapiForm.instanceId, zapi_token: zapiForm.token, zapi_client_token: zapiForm.clientToken }).eq('id', client.id);
-      if(error) alert("Erro: " + error.message); else alert("Chaves Z-API atualizadas!");
+      const { error } = await supabase.from('organizations').update({
+          zapi_instance_id: zapiForm.instanceId,
+          zapi_token: zapiForm.token,
+          zapi_client_token: zapiForm.clientToken
+      }).eq('id', client.id);
+
+      if(error) alert("Erro: " + error.message);
+      else alert("Chaves Z-API atualizadas com sucesso!");
       setIsSavingZapi(false);
   }
 
-  const handleOpenQrPage = () => {
-    if (!botConfig.phoneId) { alert("Defina um Nome da Instância (ID) e salve antes de conectar."); return; }
-    router.push(`/dashboard/clients/${client.id}/code?instance=${botConfig.phoneId}`);
-  };
+  const handleGoToQrPage = () => {
+      if (!client.zapi_instance_id && !zapiForm.instanceId) {
+          alert('ID da Instância Z-API não configurado. Contate o administrador.');
+          return;
+      }
+      router.push(`/dashboard/clients/${client.id}/code`);
+  }
+
+  const canEditPersona = botConfig.planLevel.includes('ZyCore');
 
   return (
   <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4">
@@ -391,21 +403,32 @@ export const SettingsTab = ({
                  <h3 className="font-bold text-lg text-white flex items-center gap-2"><Bot className="text-blue-500"/> Inteligência Artificial (ZyBot)</h3>
                  <p className="text-zinc-500 text-xs mt-1">Configure o comportamento e o conhecimento do seu assistente.</p>
              </div>
+             
              <div className="p-6 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                         <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Status do Bot</label>
-                        <div className="flex items-center gap-3">
-                            <button onClick={() => setBotConfig({...botConfig, isActive: !botConfig.isActive})} className={`relative w-12 h-6 rounded-full transition-all duration-300 ${botConfig.isActive ? 'bg-emerald-500' : 'bg-zinc-700'}`}>
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 shadow-sm ${botConfig.isActive ? 'left-7' : 'left-1'}`}></div>
+                        <div className="flex items-center justify-between bg-[#18181b] border border-white/10 rounded-lg p-2.5">
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setBotConfig({...botConfig, isActive: !botConfig.isActive})} className={`relative w-12 h-6 rounded-full transition-all duration-300 ${botConfig.isActive ? 'bg-emerald-500' : 'bg-zinc-700'}`}>
+                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 shadow-sm ${botConfig.isActive ? 'left-7' : 'left-1'}`}></div>
+                                </button>
+                                <span className={`text-sm font-medium ${botConfig.isActive ? 'text-emerald-400' : 'text-zinc-500'}`}>{botConfig.isActive ? 'Ativo' : 'Inativo'}</span>
+                            </div>
+                            
+                            <button onClick={handleGoToQrPage} className="text-[10px] bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded flex items-center gap-1 font-bold transition-all">
+                                <Smartphone size={12}/> Logar com WhatsApp
                             </button>
-                            <span className={`text-sm font-medium ${botConfig.isActive ? 'text-emerald-400' : 'text-zinc-500'}`}>{botConfig.isActive ? 'Ativo' : 'Inativo'}</span>
                         </div>
                     </div>
                     {role === 'super_admin' && (
                         <div className="space-y-2">
                             <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Template de Nicho</label>
-                            <select className="w-full bg-[#18181b] border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500/50" value={botConfig.template} onChange={e => setBotConfig({...botConfig, template: e.target.value})}>
+                            <select 
+                                className="w-full bg-[#18181b] border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500/50" 
+                                value={botConfig.template} 
+                                onChange={e => setBotConfig({...botConfig, template: e.target.value})}
+                            >
                                 <option value="">Selecione...</option>
                                 {filteredTemplates.map((t:any) => (<option key={t.id} value={t.id}>{t.label}</option>))}
                                 <option value="imobiliaria_basico">Imobiliária (Padrão)</option>
@@ -413,37 +436,51 @@ export const SettingsTab = ({
                         </div>
                     )}
                 </div>
+
                 <div className="border-t border-white/[0.05] my-2"></div>
+
                 <div className="space-y-5">
                     <div className="space-y-2">
                         <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1"><HelpCircle size={12}/> Perguntas Frequentes (FAQ)</label>
-                        <textarea className="w-full bg-[#18181b] border border-white/10 rounded-lg p-3 text-zinc-300 text-sm focus:border-blue-500/50 font-mono min-h-[100px]" placeholder="Ex: Qual o horário? R: 08h às 18h." value={botConfig.aiFaq} onChange={e => setBotConfig({...botConfig, aiFaq: e.target.value})} />
+                        <textarea 
+                            className="w-full bg-[#18181b] border border-white/10 rounded-lg p-3 text-zinc-300 text-sm focus:border-blue-500/50 font-mono min-h-[100px]" 
+                            placeholder="Ex: Qual o horário de almoço? R: Das 12h às 13h."
+                            value={botConfig.aiFaq} 
+                            onChange={e => setBotConfig({...botConfig, aiFaq: e.target.value})} 
+                        />
                     </div>
+
                     <div className="space-y-2">
                         <div className="flex justify-between items-center">
                             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1"><Clock size={12}/> Horários de Atendimento</label>
                             <button onClick={syncScheduleFromDb} disabled={isSyncingSchedule} className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20">{isSyncingSchedule ? <RefreshCcw size={10} className="animate-spin"/> : 'Sincronizar da Agenda'}</button>
                         </div>
-                        <input type="text" className="w-full bg-[#18181b] border border-white/10 rounded-lg p-2.5 text-zinc-300 text-sm focus:border-blue-500/50" value={botConfig.openingHours} onChange={e => setBotConfig({...botConfig, openingHours: e.target.value})} />
+                        <input 
+                            type="text" 
+                            className="w-full bg-[#18181b] border border-white/10 rounded-lg p-2.5 text-zinc-300 text-sm focus:border-blue-500/50" 
+                            value={botConfig.openingHours} 
+                            onChange={e => setBotConfig({...botConfig, openingHours: e.target.value})} 
+                        />
                     </div>
-                    {role === 'super_admin' && (
-                        <div className="space-y-2 pt-2">
-                            <div className="flex items-center justify-between">
-                                <label className="text-[10px] font-bold text-green-500 uppercase flex items-center gap-1"><Smartphone size={12}/> ID da Instância</label>
-                                <button type="button" onClick={handleOpenQrPage} disabled={!botConfig.phoneId} className="text-[10px] bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-1 rounded hover:bg-green-500/20 flex items-center gap-1 disabled:opacity-50"><QrCode size={12}/> Abrir QR Code</button>
-                            </div>
-                            <input className="w-full bg-[#18181b] border border-white/10 rounded-lg p-2.5 text-zinc-300 text-sm font-mono" value={botConfig.phoneId} onChange={e => setBotConfig({...botConfig, phoneId: e.target.value})} placeholder="Ex: imobiliaria_client_01"/>
-                        </div>
-                    )}
-                    {(botConfig.planLevel.includes('ZyCore') || role === 'super_admin') && (
+
+                    {(canEditPersona || role === 'super_admin') && (
                         <div className="space-y-2 pt-2">
                             <label className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1"><Brain size={12}/> Personalidade (Persona)</label>
-                            <textarea className="w-full bg-purple-500/[0.03] border border-purple-500/20 rounded-lg p-3 text-zinc-300 text-sm focus:border-purple-500/50 font-mono" rows={2} placeholder="Comportamento da IA..." value={botConfig.aiPersona} onChange={e => setBotConfig({...botConfig, aiPersona: e.target.value})} />
+                            <textarea 
+                                className="w-full bg-purple-500/[0.03] border border-purple-500/20 rounded-lg p-3 text-zinc-300 text-sm focus:border-purple-500/50 font-mono" 
+                                rows={2}
+                                placeholder="Comportamento da IA..."
+                                value={botConfig.aiPersona} 
+                                onChange={e => setBotConfig({...botConfig, aiPersona: e.target.value})} 
+                            />
                         </div>
                     )}
                 </div>
+
                 <div className="pt-4">
-                    <button onClick={handleSaveBotConfig} disabled={isSavingBot} className="bg-white text-black hover:bg-zinc-200 px-6 py-2.5 rounded-lg font-bold text-sm flex items-center gap-2 transition-all disabled:opacity-50">{isSavingBot ? <Loader2 size={16} className="animate-spin"/> : <Save size={16}/>} Salvar Configurações</button>
+                    <button onClick={handleSaveBotConfig} disabled={isSavingBot} className="bg-white text-black hover:bg-zinc-200 px-6 py-2.5 rounded-lg font-bold text-sm flex items-center gap-2 transition-all disabled:opacity-50">
+                        {isSavingBot ? <Loader2 size={16} className="animate-spin"/> : <Save size={16}/>} Salvar Configurações
+                    </button>
                 </div>
              </div>
           </Card>
@@ -509,7 +546,7 @@ export const SettingsTab = ({
                     <div className="space-y-1">
                         <label className="text-[10px] font-bold text-zinc-500 uppercase">Pagamento</label>
                         <select disabled={!isEditing} className="w-full bg-[#18181b] border border-white/10 rounded px-3 py-2 text-sm text-white disabled:opacity-50" value={editForm.payment_method} onChange={e => setEditForm({...editForm, payment_method: e.target.value})}>
-                            <option value="pix">PIX</option><option value="boleto">Boleto</option><option value="cartao">Cartão</option>
+                            <option value="pix">PIX</option><option value="boleto">Boleto</option><option value="cartao">Cartão de Crédito</option>
                         </select>
                     </div>
                     {isEditing && <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded text-xs font-bold">Salvar Contrato</button>}
