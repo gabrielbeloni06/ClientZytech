@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, RefreshCcw, Smartphone, CheckCircle, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, RefreshCcw, Smartphone, AlertTriangle, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 
 export default function QrCodePage() {
@@ -19,6 +19,9 @@ export default function QrCodePage() {
       fetchClientInfo()
       generateQrUrl()
     }
+    return () => {
+      if (qrUrl) URL.revokeObjectURL(qrUrl)
+    }
   }, [clientId])
 
   async function fetchClientInfo() {
@@ -26,25 +29,33 @@ export default function QrCodePage() {
     if (data) setClientName(data.name)
   }
 
-  function generateQrUrl() {
+  async function generateQrUrl() {
     setLoading(true)
     setError('')
-    const url = `/api/whatsapp/qr?orgId=${clientId}&t=${Date.now()}`
-    setQrUrl(url)
-  }
+    setQrUrl(null)
 
-  const handleImageLoad = () => {
-    setLoading(false)
-  }
+    try {
+      const response = await fetch(`/api/whatsapp/qr?orgId=${clientId}&t=${Date.now()}`)
+      
+      if (!response.ok) {
+        const errData = await response.json()
+        throw new Error(errData.details || errData.error || 'Erro desconhecido na Z-API')
+      }
 
-  const handleImageError = () => {
-    setLoading(false)
-    setError('Não foi possível carregar o QR Code. Verifique se as credenciais Z-API estão salvas corretamente ou se a instância já está conectada.')
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      setQrUrl(objectUrl)
+
+    } catch (err: any) {
+      console.error(err)
+      setError(err.message || 'Falha ao carregar QR Code')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
     <div className="min-h-screen bg-[#09090b] text-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
-
       <div className="fixed top-0 left-0 w-[500px] h-[500px] bg-green-500/10 blur-[120px] rounded-full pointer-events-none"></div>
       
       <div className="w-full max-w-md z-10 space-y-6">
@@ -62,36 +73,38 @@ export default function QrCodePage() {
 
             <h1 className="text-2xl font-bold text-white mb-2">Conectar WhatsApp</h1>
             <p className="text-zinc-400 text-sm mb-8">
-                Escaneie o código abaixo para conectar o bot da <strong>{clientName || 'Empresa'}</strong>.
+                Escaneie o código para conectar o bot da <strong>{clientName || 'Empresa'}</strong>.
             </p>
 
-            <div className="bg-white p-4 rounded-xl shadow-inner mb-6 relative w-64 h-64 flex items-center justify-center bg-white">
+            <div className="bg-white p-4 rounded-xl shadow-inner mb-6 relative w-64 h-64 flex items-center justify-center">
                 {loading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/90 z-10">
-                        <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/90 z-10 rounded-xl">
+                        <div className="flex flex-col items-center gap-2">
+                            <Loader2 className="animate-spin text-green-600" size={32}/>
+                            <span className="text-xs text-zinc-500 font-bold">Gerando QR...</span>
+                        </div>
                     </div>
                 )}
                 
                 {error ? (
-                    <div className="text-red-500 text-xs px-4 flex flex-col items-center gap-2">
-                        <AlertTriangle size={24}/>
-                        <span>{error}</span>
+                    <div className="text-red-600 text-xs px-2 flex flex-col items-center gap-2">
+                        <AlertTriangle size={32}/>
+                        <span className="font-bold text-center">{error}</span>
+                        <span className="text-[10px] text-zinc-500 text-center">Verifique as credenciais no painel admin.</span>
                     </div>
-                ) : (
+                ) : qrUrl && (
                     <img 
-                        src={qrUrl || ''} 
+                        src={qrUrl} 
                         alt="QR Code Z-API" 
                         className="w-full h-full object-contain"
-                        onLoad={handleImageLoad}
-                        onError={handleImageError}
                     />
                 )}
             </div>
 
             <div className="space-y-4 w-full">
                 <div className="text-xs text-zinc-500 bg-zinc-900/50 p-4 rounded-lg text-left space-y-2 border border-white/5">
-                    <p className="flex items-center gap-2"><span className="bg-zinc-800 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">1</span> Abra o WhatsApp no seu celular.</p>
-                    <p className="flex items-center gap-2"><span className="bg-zinc-800 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">2</span> Toque em Configurações {'>'} Aparelhos conectados.</p>
+                    <p className="flex items-center gap-2"><span className="bg-zinc-800 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">1</span> Abra o WhatsApp no celular.</p>
+                    <p className="flex items-center gap-2"><span className="bg-zinc-800 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">2</span> Vá em Configurações {'>'} Aparelhos conectados.</p>
                     <p className="flex items-center gap-2"><span className="bg-zinc-800 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">3</span> Aponte a câmera para esta tela.</p>
                 </div>
 
