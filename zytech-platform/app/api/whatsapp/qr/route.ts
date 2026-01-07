@@ -9,35 +9,40 @@ export async function GET(req: NextRequest) {
 
   if (!orgId) return NextResponse.json({ error: "Org ID missing" }, { status: 400 });
 
-
   const supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const { data: org } = await supabase
+  const { data: org, error } = await supabase
     .from("organizations")
     .select("zapi_instance_id, zapi_token, zapi_client_token")
     .eq("id", orgId)
     .single();
 
-  if (!org || !org.zapi_instance_id || !org.zapi_token) {
-    return NextResponse.json({ error: "Z-API não configurada" }, { status: 404 });
+  if (error || !org || !org.zapi_instance_id || !org.zapi_token) {
+    console.error("Credenciais Z-API ausentes no banco:", error || "Dados incompletos");
+    return NextResponse.json({ error: "Configuração Z-API incompleta." }, { status: 404 });
   }
 
-  const zapiUrl = `https://api.z-api.io/instances/${org.zapi_instance_id}/token/${org.zapi_token}/qr-code/image`;
+  const instanceId = org.zapi_instance_id.trim();
+  const token = org.zapi_token.trim();
+  
+  const zapiUrl = `https://api.z-api.io/instances/${instanceId}/token/${token}/qr-code/image`;
 
   try {
     const headers: any = {};
-    if (org.zapi_client_token) {
-      headers["Client-Token"] = org.zapi_client_token;
+    
+    if (org.zapi_client_token && org.zapi_client_token.trim() !== "") {
+      headers["Client-Token"] = org.zapi_client_token.trim();
     }
 
     const response = await fetch(zapiUrl, { headers });
 
     if (!response.ok) {
-        const errorJson = await response.json();
-        return NextResponse.json(errorJson, { status: response.status });
+        const errorText = await response.text();
+        console.error("Erro Z-API ao pegar QR:", response.status, errorText);
+        return NextResponse.json({ error: "Erro na Z-API", details: errorText }, { status: response.status });
     }
 
     const imageBlob = await response.blob();
@@ -50,7 +55,7 @@ export async function GET(req: NextRequest) {
     });
 
   } catch (error) {
-    console.error("Erro ao buscar QR:", error);
-    return NextResponse.json({ error: "Falha na conexão com Z-API" }, { status: 500 });
+    console.error("Erro de conexão (QR Code):", error);
+    return NextResponse.json({ error: "Falha interna ao conectar com Z-API" }, { status: 500 });
   }
 }
