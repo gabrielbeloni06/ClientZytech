@@ -3,12 +3,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, RefreshCcw, Smartphone, AlertTriangle, Loader2, CheckCircle2 } from 'lucide-react'
-import { supabase } from '@/lib/supabaseClient' // Certifique-se que esse import está correto no seu projeto
+import { supabase } from '@/lib/supabaseClient'
 
 export default function QrCodePage() {
   const params = useParams()
   const router = useRouter()
-  // Garante que clientId é string, mesmo se vier array
   const clientId = Array.isArray(params?.id) ? params.id[0] : params?.id
 
   const [qrBase64, setQrBase64] = useState<string | null>(null)
@@ -17,7 +16,6 @@ export default function QrCodePage() {
   const [error, setError] = useState('')
   const [isConnected, setIsConnected] = useState(false)
 
-  // Timer para atualizar o QR Code a cada 20 segundos automaticamente
   useEffect(() => {
     let interval: NodeJS.Timeout
 
@@ -25,12 +23,10 @@ export default function QrCodePage() {
       fetchClientInfo()
       fetchQrCode()
       
-      // Atualiza o QR Code a cada 20 segundos para não expirar na tela
       interval = setInterval(fetchQrCode, 20000)
     }
 
     return () => clearInterval(interval)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, isConnected])
 
   async function fetchClientInfo() {
@@ -40,7 +36,6 @@ export default function QrCodePage() {
   }
 
   async function fetchQrCode() {
-    // Não seta loading=true no refresh automático para não piscar a tela
     if (!qrBase64) setLoading(true)
     setError('')
 
@@ -52,7 +47,6 @@ export default function QrCodePage() {
         throw new Error(data.error || 'Falha ao buscar QR Code')
       }
 
-      // Se a API avisar que já conectou
       if (data.connected) {
         setIsConnected(true)
         setQrBase64(null)
@@ -69,7 +63,6 @@ export default function QrCodePage() {
 
     } catch (err: any) {
       console.error(err)
-      // Se já tiver um QR na tela, mantém ele mesmo com erro momentâneo de rede
       if (!qrBase64) setError(err.message)
     } finally {
       setLoading(false)
@@ -90,7 +83,6 @@ export default function QrCodePage() {
 
         <div className="bg-[#0F0F11] border border-white/10 rounded-2xl p-8 shadow-2xl flex flex-col items-center text-center">
             
-            {/* Header com Ícone */}
             <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-6 border transition-colors ${isConnected ? 'bg-green-500/20 text-green-500 border-green-500/50' : 'bg-zinc-800/50 text-white border-white/10'}`}>
                 {isConnected ? <CheckCircle2 size={32}/> : <Smartphone size={32}/>}
             </div>
@@ -105,7 +97,6 @@ export default function QrCodePage() {
                 </p>
             )}
 
-            {/* Área do QR Code ou Status de Sucesso */}
             <div className="bg-white p-4 rounded-xl shadow-inner mb-6 relative w-64 h-64 flex items-center justify-center overflow-hidden">
                 
                 {isConnected ? (
@@ -130,7 +121,6 @@ export default function QrCodePage() {
                         </button>
                     </div>
                 ) : qrBase64 && (
-                    /* eslint-disable-next-line @next/next/no-img-element */
                     <img 
                         src={qrBase64} 
                         alt="QR Code Z-API" 
@@ -139,11 +129,9 @@ export default function QrCodePage() {
                 )}
             </div>
 
-            {/* Instruções só aparecem se não estiver conectado */}
             {!isConnected && (
                 <div className="space-y-4 w-full">
                     <div className="text-xs text-zinc-500 bg-zinc-900/50 p-4 rounded-lg text-left space-y-2 border border-white/5">
-                        {/* AQUI ESTAVA O ERRO: Troquei > por &gt; para não quebrar o JSX */}
                         <p className="flex items-center gap-2"><span className="bg-zinc-800 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">1</span> Abra o WhatsApp &gt; Configurações.</p>
                         <p className="flex items-center gap-2"><span className="bg-zinc-800 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">2</span> Toque em Aparelhos conectados.</p>
                         <p className="flex items-center gap-2"><span className="bg-zinc-800 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">3</span> Aponte a câmera para esta tela.</p>

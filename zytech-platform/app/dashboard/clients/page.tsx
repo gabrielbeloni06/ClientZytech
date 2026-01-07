@@ -3,9 +3,9 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { 
-  Plus, Search, MoreHorizontal, X, Save, 
+  Plus, Search, X, Save, 
   Briefcase, ShoppingCart, Globe, Cpu, Calendar, ChevronRight, Truck,
-  Sparkles, Filter, Home, Building, LayoutGrid, List
+  Sparkles, Filter, Home, Trash2, AlertCircle
 } from 'lucide-react'
 
 export default function ClientsPage() {
@@ -75,6 +75,28 @@ export default function ClientsPage() {
       fetchClients()
     }
     setIsSaving(false)
+  }
+
+  async function handleDeleteClient(id: string, name: string) {
+    const confirmed = window.confirm(
+        `⚠️ PERIGO: Você tem certeza que deseja EXCLUIR o cliente "${name}"?\n\n` + 
+        `Essa ação é irreversível e apagará TODOS os dados vinculados (histórico, configurações, leads) do banco de dados.`
+    )
+
+    if (!confirmed) return
+
+
+    const { error } = await supabase
+      .from('organizations')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      alert('Erro ao excluir cliente. Verifique se existem dados vinculados que impedem a exclusão.\n\nErro: ' + error.message)
+      fetchClients()
+    } else {
+      setClients(prev => prev.filter(c => c.id !== id))
+    }
   }
 
   const filteredClients = clients.filter(client => 
@@ -308,13 +330,23 @@ export default function ClientsPage() {
                             </td>
                             
                             <td className="p-5 text-right">
-                            <Link 
-                                href={detailsLink}
-                                className="inline-flex items-center justify-center w-8 h-8 text-gray-500 hover:text-white hover:bg-white/10 rounded-lg transition-all hover:scale-110 active:scale-95 border border-transparent hover:border-white/10"
-                                title="Ver Detalhes"
-                            >
-                                <ChevronRight size={18} />
-                            </Link>
+                                <div className="flex items-center justify-end gap-2">
+                                    <Link 
+                                        href={detailsLink}
+                                        className="inline-flex items-center justify-center w-8 h-8 text-gray-500 hover:text-white hover:bg-white/10 rounded-lg transition-all hover:scale-110 active:scale-95 border border-transparent hover:border-white/10"
+                                        title="Ver Detalhes"
+                                    >
+                                        <ChevronRight size={18} />
+                                    </Link>
+                                    
+                                    <button 
+                                        onClick={() => handleDeleteClient(client.id, client.name)}
+                                        className="inline-flex items-center justify-center w-8 h-8 text-red-900/50 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all hover:scale-110 active:scale-95 border border-transparent hover:border-red-500/20"
+                                        title="Excluir Contrato"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
                             </td>
                         </tr> 
                         )

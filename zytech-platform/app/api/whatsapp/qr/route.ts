@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
-// Inicializa o Supabase com a Service Key para ter permissão de ler tokens sensíveis
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY! 
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
@@ -17,7 +16,6 @@ export async function GET(request: Request) {
 
     console.log(`🔄 [Backend] Buscando credenciais para Org: ${orgId}...`)
 
-    // 1. Busca as credenciais no banco de dados
     const { data: org, error: dbError } = await supabase
       .from('organizations')
       .select('zapi_instance_id, zapi_token, zapi_client_token')
@@ -35,9 +33,8 @@ export async function GET(request: Request) {
 
     const INSTANCE_ID = org.zapi_instance_id
     const INSTANCE_TOKEN = org.zapi_token
-    const CLIENT_TOKEN = org.zapi_client_token // Agora vem do banco!
+    const CLIENT_TOKEN = org.zapi_client_token 
 
-    // Endpoint de imagem com timestamp para evitar cache
     const zApiUrl = `https://api.z-api.io/instances/${INSTANCE_ID}/token/${INSTANCE_TOKEN}/qr-code/image?_t=${Date.now()}`
     
     const headers: Record<string, string> = {
@@ -50,7 +47,6 @@ export async function GET(request: Request) {
         headers['Client-Token'] = CLIENT_TOKEN
     }
 
-    // Faz a chamada para a Z-API
     const response = await fetch(zApiUrl, {
       method: 'GET',
       headers: headers,
@@ -58,13 +54,9 @@ export async function GET(request: Request) {
     })
 
     const contentType = response.headers.get('content-type') || 'unknown'
-    // console.log(`📡 Status: ${response.status} | Tipo: ${contentType}`)
-
-    // 2. Tratamento de Erros HTTP óbvios
     if (response.status === 404) return NextResponse.json({ error: 'Instância 404 na Z-API (Verifique o ID no Banco).' }, { status: 404 })
     if (response.status === 401) return NextResponse.json({ error: 'Erro 401 Z-API: Token inválido.' }, { status: 401 })
 
-    // 3. Se a Z-API devolveu JSON em vez de Imagem (Lógica blindada)
     if (contentType.includes('application/json')) {
         const json = await response.json()
         
@@ -84,10 +76,8 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Z-API retornou JSON inesperado.', details: json }, { status: errorStatus })
     }
 
-    // 4. Leitura do binário (Imagem Real)
     const imageBuffer = await response.arrayBuffer()
 
-    // Verificação de segurança: HTML disfarçado
     const firstBytes = new Uint8Array(imageBuffer.slice(0, 50));
     const textStart = new TextDecoder().decode(firstBytes);
     if (textStart.includes('<html') || textStart.includes('<!DOCT')) {
