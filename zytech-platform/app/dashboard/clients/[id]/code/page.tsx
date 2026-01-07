@@ -9,7 +9,7 @@ export default function QrCodePage() {
   const router = useRouter()
   const clientId = params?.id
 
-  const [qrUrl, setQrUrl] = useState<string | null>(null)
+  const [qrBase64, setQrBase64] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [clientName, setClientName] = useState('')
   const [error, setError] = useState('')
@@ -17,11 +17,9 @@ export default function QrCodePage() {
   useEffect(() => {
     if (clientId) {
       fetchClientInfo()
-      generateQrUrl()
+      fetchQrCode()
     }
-    return () => {
-      if (qrUrl) URL.revokeObjectURL(qrUrl)
-    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId])
 
   async function fetchClientInfo() {
@@ -29,34 +27,24 @@ export default function QrCodePage() {
     if (data) setClientName(data.name)
   }
 
-  async function generateQrUrl() {
+  async function fetchQrCode() {
     setLoading(true)
     setError('')
-    setQrUrl(null)
+    setQrBase64(null)
 
     try {
       const response = await fetch(`/api/whatsapp/qr?orgId=${clientId}&t=${Date.now()}`)
-      
+      const data = await response.json()
+
       if (!response.ok) {
-        let errorMessage = 'Erro desconhecido';
-        try {
-            const errData = await response.json();
-            if (JSON.stringify(errData).includes("connected")) {
-                errorMessage = "Esta instância já está conectada!";
-            } else {
-                errorMessage = errData.details || errData.error || `Erro ${response.status}`;
-            }
-        } catch (e) {
-            errorMessage = `Erro na API: ${response.statusText}`;
-        }
-        throw new Error(errorMessage)
+        throw new Error(data.error || 'Falha ao gerar QR Code')
       }
 
-      const blob = await response.blob()
-      if (blob.size === 0) throw new Error("Imagem vazia recebida da API");
-      
-      const objectUrl = URL.createObjectURL(blob)
-      setQrUrl(objectUrl)
+      if (data.qr) {
+        setQrBase64(data.qr)
+      } else {
+        throw new Error('QR Code não recebido.')
+      }
 
     } catch (err: any) {
       console.error(err)
@@ -90,7 +78,7 @@ export default function QrCodePage() {
 
             <div className="bg-white p-4 rounded-xl shadow-inner mb-6 relative w-64 h-64 flex items-center justify-center overflow-hidden">
                 {loading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/90 z-20">
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/95 z-20">
                         <div className="flex flex-col items-center gap-2">
                             <Loader2 className="animate-spin text-green-600" size={32}/>
                             <span className="text-xs text-zinc-500 font-bold">Gerando QR...</span>
@@ -102,11 +90,12 @@ export default function QrCodePage() {
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-red-600 px-4 bg-white z-10">
                         <AlertTriangle size={32} className="mb-2"/>
                         <span className="text-xs font-bold text-center break-words w-full">{error}</span>
-                        <span className="text-[10px] text-zinc-500 text-center mt-2">Verifique o Token/ID no painel.</span>
+                        <span className="text-[10px] text-zinc-500 text-center mt-2">Verifique o token no painel.</span>
                     </div>
-                ) : qrUrl && (
+                ) : qrBase64 && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
                     <img 
-                        src={qrUrl} 
+                        src={qrBase64} 
                         alt="QR Code Z-API" 
                         className="w-full h-full object-contain"
                     />
@@ -121,7 +110,7 @@ export default function QrCodePage() {
                 </div>
 
                 <button 
-                    onClick={generateQrUrl}
+                    onClick={fetchQrCode}
                     className="w-full py-3 bg-white hover:bg-zinc-200 text-black rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all"
                 >
                     <RefreshCcw size={16}/> Gerar Novo Código
