@@ -1,74 +1,61 @@
 import { NextResponse } from 'next/server'
 
-// import { createClient } from '@supabase/supabase-js'
-// const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-// const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY! 
-// const supabase = createClient(supabaseUrl, supabaseServiceKey)
-
 export async function GET(request: Request) {
   try {
-    // Pegamos os params só para não quebrar a lógica, mas não vamos usar para buscar no banco agora
-    const { searchParams } = new URL(request.url)
-    const orgId = searchParams.get('orgId')
-
-    // --- MODO DE TESTE (HARDCODED) ---
-    // Estamos ignorando o orgId e o Supabase para validar a conexão Z-API
+    // --- CREDENCIAIS Z-API ---
     const INSTANCE_ID = '3ECD19678C8703E97D4572442EF70706'
     const INSTANCE_TOKEN = '6D5F55C706D38E75CA716748'
-    const CLIENT_TOKEN = '' // Se sua instância tiver Client-Token de segurança, coloque aqui
+    const CLIENT_TOKEN = 'F7a09e770fcca44daab11e9536ea32284S' // Token que você mandou
 
-    console.log(`🔄 [Backend] Tentando buscar QR Code via JSON Endpoint...`)
-    console.log(`🆔 ID: ${INSTANCE_ID}`)
+    console.log(`🔄 [Backend] Buscando QR Code na Z-API...`)
 
-    // ESTRATÉGIA NOVA: Usar o endpoint que retorna JSON com o base64 (Mais seguro que imagem bruta)
+    // Endpoint JSON (Retorna o base64 em texto, muito mais seguro que binário)
     const zApiUrl = `https://api.z-api.io/instances/${INSTANCE_ID}/token/${INSTANCE_TOKEN}/qr-code`
     
-    // Faz a requisição para a Z-API
+    // Configura os headers com o seu Token de Segurança
+    const headers: Record<string, string> = {
+        'Cache-Control': 'no-store'
+    }
+    
+    // Adiciona o token no header (obrigatório se configurado na Z-API)
+    if (CLIENT_TOKEN) {
+        headers['Client-Token'] = CLIENT_TOKEN
+    }
+
     const response = await fetch(zApiUrl, {
       method: 'GET',
-      headers: { 
-        'Client-Token': CLIENT_TOKEN,
-        'Cache-Control': 'no-store' // Garante que não pega cache
-      }
+      headers: headers
     })
 
-    console.log(`📡 Status Z-API: ${response.status}`)
+    // Tratamento de erros de segurança/acesso
+    if (response.status === 401 || response.status === 403) {
+        console.error('❌ Erro de Permissão Z-API:', await response.text())
+        return NextResponse.json({ 
+            error: 'Acesso negado pela Z-API. Verifique se o Client-Token bate com o painel.' 
+        }, { status: 401 })
+    }
 
-    // Tratamento de erros de rede/status
     if (response.status === 404) {
-      return NextResponse.json({ error: 'Erro 404: Instância não encontrada na Z-API. Verifique o ID.' }, { status: 404 })
+        return NextResponse.json({ error: 'Instância não encontrada.' }, { status: 404 })
     }
 
-    if (response.status === 401) {
-       return NextResponse.json({ error: 'Erro 401: Não autorizado. Verifique Token ou Client-Token.' }, { status: 401 })
-    }
-
-    // Tenta ler o JSON
     const data = await response.json()
-    
-    // Log do que veio (ajuda a debugar se der erro)
-    // console.log('📦 Payload Z-API:', JSON.stringify(data).substring(0, 100) + '...')
 
-    // 1. Verifica se já está conectado
+    // 1. Caso: Instância já conectada
     if (data.connected) {
         return NextResponse.json({ connected: true })
     }
 
-    // 2. Verifica se veio o QR Code (campo 'value')
+    // 2. Caso: QR Code recebido com sucesso
     if (data.value) {
-        // A Z-API já manda com "data:image/png;base64,..." no campo value
         return NextResponse.json({ qr: data.value, connected: false })
     }
 
-    // 3. Se não veio QR nem connected, deve ser erro
-    if (data.error) {
-         return NextResponse.json({ error: data.error, details: data }, { status: 400 })
-    }
-
-    throw new Error('Resposta desconhecida da Z-API (sem QR e sem erro explicito).')
+    // 3. Caso: Erro genérico
+    return NextResponse.json({ error: 'Falha ao ler QR Code.', details: data }, { status: 400 })
 
   } catch (error: any) {
-    console.error('❌ Erro CRÍTICO na rota QR:', error)
+    console.error('❌ Erro Interno:', error)
     return NextResponse.json({ error: error.message || 'Erro interno do servidor' }, { status: 500 })
   }
 }
