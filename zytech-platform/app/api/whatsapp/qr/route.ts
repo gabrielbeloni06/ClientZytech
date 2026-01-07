@@ -1,70 +1,77 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from '@supabase/supabase-js'
+import { NextResponse } from 'next/server'
 
-export const runtime = "nodejs";
+// Mantenha essas variáveis de ambiente no seu .env.local
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY! 
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const orgId = searchParams.get("orgId");
+// Usamos a service key para ter permissão de ler os tokens no banco
+const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-  if (!orgId) return NextResponse.json({ error: "ID da organização faltando." }, { status: 400 });
-
-  const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-
+export async function GET(request: Request) {
   try {
-    // 1. Busca credenciais
-    const { data: org, error } = await supabase
-      .from("organizations")
-      .select("zapi_instance_id, zapi_token, zapi_client_token")
-      .eq("id", orgId)
-      .single();
+    const { searchParams } = new URL(request.url)
+    const orgId = searchParams.get('orgId')
 
-    if (error || !org || !org.zapi_instance_id || !org.zapi_token) {
-      return NextResponse.json({ error: "Credenciais não encontradas no banco de dados." }, { status: 404 });
+    if (!orgId) {
+      return NextResponse.json({ error: 'ID da organização é obrigatório' }, { status: 400 })
     }
 
-    const instanceId = org.zapi_instance_id.trim();
-    const token = org.zapi_token.trim();
-    const clientToken = org.zapi_client_token?.trim();
+    // 1. Busca as credenciais da Z-API no seu banco de dados
+    // CERTIFIQUE-SE que os nomes das colunas (zapi_instance_id, zapi_token) estão iguais ao seu DB
+    const { data: org, error: dbError } = await supabase
+      .from('organizations')
+      .select('zapi_instance_id, zapi_token, zapi_security_token') 
+      .eq('id', orgId)
+      .single()
 
-    // 2. Chama a Z-API
-    const zapiUrl = `https://api.z-api.io/instances/${instanceId}/token/${token}/qr-code/image`;
+    if (dbError || !org?.zapi_instance_id || !org?.zapi_token) {
+      return NextResponse.json({ error: 'Credenciais da instância não encontradas no banco.' }, { status: 404 })
+    }
+
+    // 2. Monta a URL da Z-API para pegar a IMAGEM do QR Code
+    const zApiUrl = `https://api.z-api.io/instances/${org.zapi_instance_id}/token/${org.zapi_token}/qr-code/image`
     
-    const headers: any = {};
-    if (clientToken) headers["Client-Token"] = clientToken;
+    // 3. Faz a requisição para a Z-API
+    const response = await fetch(zApiUrl, {
+      method: 'GET',
+      headers: { 
+        'Client-Token': org.zapi_security_token || '' // Passa o Client-Token se você usar
+      }
+    })
 
-    const response = await fetch(zapiUrl, { headers });
-    const contentType = response.headers.get("content-type");
+    // Tratamento: Se der 404, a instância pode estar desligada ou incorreta
+    if (response.status === 404) {
+      return NextResponse.json({ error: 'Instância não encontrada ou desligada na Z-API.' }, { status: 404 })
+    }
 
-    // 3. Verifica se é Erro (JSON) ou Sucesso (Imagem)
-    if (contentType && contentType.includes("application/json")) {
-        // É um erro ou aviso (ex: já conectado)
-        const errorJson = await response.json();
-        console.error("Z-API Retornou JSON (Erro/Aviso):", errorJson);
-        
-        if (errorJson.connected) {
-            return NextResponse.json({ error: "Esta instância já está conectada!", connected: true }, { status: 400 });
+    // Tratamento: Se a Z-API retornar erro (ex: já conectado), as vezes vem como JSON
+    const contentType = response.headers.get('content-type')
+    if (contentType && contentType.includes('application/json')) {
+        const jsonResponse = await response.json()
+        if (jsonResponse.connected) {
+            return NextResponse.json({ connected: true })
         }
-        
-        return NextResponse.json({ error: errorJson.message || errorJson.error || "Erro na Z-API" }, { status: response.status });
+        // Se for outro erro JSON
+        if (!response.ok) {
+            return NextResponse.json({ error: jsonResponse.message || 'Erro na Z-API' }, { status: response.status })
+        }
     }
 
     if (!response.ok) {
-        return NextResponse.json({ error: `Erro na Z-API: ${response.statusText}` }, { status: response.status });
+      throw new Error(`Z-API retornou status: ${response.status}`)
     }
 
-    // 4. Sucesso: Converte a imagem para Base64 para garantir transporte seguro
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const base64Image = `data:image/png;base64,${buffer.toString('base64')}`;
+    // 4. CONVERSÃO CRÍTICA: Transforma o binário da imagem em Base64
+    const imageBuffer = await response.arrayBuffer()
+    const base64Image = Buffer.from(imageBuffer).toString('base64')
+    const dataUri = `data:image/png;base64,${base64Image}`
 
-    return NextResponse.json({ qr: base64Image });
+    // 5. Devolve o JSON pronto para o seu front
+    return NextResponse.json({ qr: dataUri, connected: false })
 
-  } catch (err: any) {
-    console.error("Erro interno:", err);
-    return NextResponse.json({ error: "Erro interno no servidor", details: err.message }, { status: 500 });
+  } catch (error: any) {
+    console.error('Erro na rota QR:', error)
+    return NextResponse.json({ error: error.message || 'Erro interno do servidor' }, { status: 500 })
   }
 }
