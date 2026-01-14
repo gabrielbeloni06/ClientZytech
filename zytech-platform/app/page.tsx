@@ -243,7 +243,7 @@ export default function LoginPage() {
                 <Image src="/icon.jpg" alt="Zytech" fill className="object-cover" priority/>
             </div>
             <h1 className="text-2xl font-bold tracking-tight text-white flex items-center justify-center gap-2">
-              ZYTECH <span className="text-blue-500">.ID</span>
+              ZYTECH <span className="text-blue-500">CLIENT</span>
             </h1>
             <p className="text-xs text-gray-500 mt-1">
                 {mode === 'login' ? 'Acesso ao Painel de Gestão' : 'Crie sua conta em 3 passos'}

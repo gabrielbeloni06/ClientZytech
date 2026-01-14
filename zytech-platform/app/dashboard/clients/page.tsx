@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { 
   Plus, Search, X, Save, 
   Briefcase, ShoppingCart, Globe, Cpu, Calendar, ChevronRight, Truck,
-  Sparkles, Filter, Home, Trash2, AlertCircle
+  Sparkles, Filter, Home, Trash2, AlertCircle, CheckCircle, XCircle, Clock
 } from 'lucide-react'
 
 export default function ClientsPage() {
@@ -13,6 +13,8 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('') 
   
+  const [filterStatus, setFilterStatus] = useState<'approved' | 'analysis'>('approved')
+
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [newClientName, setNewClientName] = useState('')
   const [newClientType, setNewClientType] = useState('commerce') 
@@ -23,18 +25,52 @@ export default function ClientsPage() {
 
   useEffect(() => {
     fetchClients()
-  }, [])
+  }, [filterStatus])
 
   async function fetchClients() {
+    setLoading(true)
     const { data } = await supabase
       .from('organizations')
       .select('*')
       .neq('name', 'Zytech HQ')
+      .eq('approval_status', filterStatus) 
       .order('created_at', { ascending: false })
 
     if (data) setClients(data)
     setLoading(false)
   }
+
+  async function handleApprove(id: string, name: string) {
+      const confirm = window.confirm(`Deseja aprovar e liberar o acesso para "${name}"?`);
+      if(!confirm) return;
+
+      const { error } = await supabase
+        .from('organizations')
+        .update({ approval_status: 'approved' })
+        .eq('id', id);
+      
+      if(error) alert('Erro ao aprovar: ' + error.message);
+      else {
+          setClients(prev => prev.filter(c => c.id !== id));
+          alert(`Cliente ${name} aprovado com sucesso!`);
+      }
+  }
+
+  async function handleReprove(id: string, name: string) {
+      const confirm = window.confirm(`Deseja REPROVAR o cadastro de "${name}"?\nIsso impedirá o acesso.`);
+      if(!confirm) return;
+
+      const { error } = await supabase
+        .from('organizations')
+        .update({ approval_status: 'reproved' })
+        .eq('id', id);
+      
+      if(error) alert('Erro ao reprovar: ' + error.message);
+      else {
+          setClients(prev => prev.filter(c => c.id !== id));
+      }
+  }
+
 
   function calculateExpiration(cycle: string) {
     const now = new Date()
@@ -58,6 +94,7 @@ export default function ClientsPage() {
           plan: finalPlan,
           business_type: newClientType,
           status: 'active',
+          approval_status: 'approved', 
           subscription_value: valueFormatted,
           subscription_cycle: newClientCycle,
           subscription_valid_until: calculateExpiration(newClientCycle)
@@ -72,7 +109,8 @@ export default function ClientsPage() {
       setNewClientValue('')
       setNewClientCycle('mensal')
       setNewClientType('commerce')
-      fetchClients()
+      if (filterStatus === 'approved') fetchClients();
+      else setFilterStatus('approved');
     }
     setIsSaving(false)
   }
@@ -252,9 +290,24 @@ export default function ClientsPage() {
 
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/5 pb-6">
             <div>
-            <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">Gestão de Carteira</h2>
-            <p className="text-gray-400 mt-1 flex items-center gap-2 text-sm"><Filter size={14} className="text-blue-500"/> Administre seus contratos Zytech</p>
+                <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">Gestão de Carteira</h2>
+                <div className="flex items-center gap-6 mt-4">
+                    <button 
+                        onClick={() => setFilterStatus('approved')}
+                        className={`text-sm font-bold pb-2 transition-all border-b-2 ${filterStatus === 'approved' ? 'text-white border-blue-500' : 'text-gray-500 border-transparent hover:text-gray-300'}`}
+                    >
+                        Carteira Ativa
+                    </button>
+                    <button 
+                        onClick={() => setFilterStatus('analysis')}
+                        className={`text-sm font-bold pb-2 transition-all border-b-2 flex items-center gap-2 ${filterStatus === 'analysis' ? 'text-yellow-400 border-yellow-500' : 'text-gray-500 border-transparent hover:text-gray-300'}`}
+                    >
+                        Solicitações em Análise
+                        {filterStatus !== 'analysis' && <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>}
+                    </button>
+                </div>
             </div>
+            
             <div className="flex items-center gap-3">
                 <div className="relative hidden md:block">
                     <Search size={16} className="absolute left-3 top-3 text-gray-600"/>
@@ -288,7 +341,7 @@ export default function ClientsPage() {
                     {loading ? (
                     <tr><td colSpan={5} className="p-12 text-center text-gray-500 animate-pulse font-mono text-sm">Carregando carteira de clientes...</td></tr>
                     ) : filteredClients.length === 0 ? (
-                    <tr><td colSpan={5} className="p-12 text-center text-gray-500">Nenhum contrato encontrado.</td></tr>
+                    <tr><td colSpan={5} className="p-12 text-center text-gray-500">Nenhuma empresa encontrada nesta aba.</td></tr>
                     ) : (
                     filteredClients.map((client) => {
                         const style = getTypeStyle(client.business_type)
@@ -298,9 +351,13 @@ export default function ClientsPage() {
                         return (
                         <tr key={client.id} className="hover:bg-white/[0.02] transition-colors group">
                             <td className="p-5">
-                                <Link href={detailsLink} className="font-bold text-white hover:text-blue-400 transition-colors block text-base group-hover:translate-x-1 duration-300">
-                                    {client.name}
-                                </Link>
+                                {filterStatus === 'approved' ? (
+                                    <Link href={detailsLink} className="font-bold text-white hover:text-blue-400 transition-colors block text-base group-hover:translate-x-1 duration-300">
+                                        {client.name}
+                                    </Link>
+                                ) : (
+                                    <span className="font-bold text-white block text-base">{client.name}</span>
+                                )}
                                 <span className="text-[10px] text-gray-600 font-mono block mt-1">{client.id.split('-')[0]}...</span>
                             </td>
                             
@@ -323,29 +380,54 @@ export default function ClientsPage() {
                             </td>
 
                             <td className="p-5">
-                            <span className="inline-flex items-center gap-2 text-green-400 text-xs font-bold bg-green-500/10 px-3 py-1.5 rounded-full border border-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.1)]">
-                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-                                Ativo
-                            </span>
+                            {filterStatus === 'approved' ? (
+                                <span className="inline-flex items-center gap-2 text-green-400 text-xs font-bold bg-green-500/10 px-3 py-1.5 rounded-full border border-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.1)]">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                                    Ativo
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center gap-2 text-yellow-400 text-xs font-bold bg-yellow-500/10 px-3 py-1.5 rounded-full border border-yellow-500/20">
+                                    <Clock size={12} /> Em Análise
+                                </span>
+                            )}
                             </td>
                             
                             <td className="p-5 text-right">
                                 <div className="flex items-center justify-end gap-2">
-                                    <Link 
-                                        href={detailsLink}
-                                        className="inline-flex items-center justify-center w-8 h-8 text-gray-500 hover:text-white hover:bg-white/10 rounded-lg transition-all hover:scale-110 active:scale-95 border border-transparent hover:border-white/10"
-                                        title="Ver Detalhes"
-                                    >
-                                        <ChevronRight size={18} />
-                                    </Link>
-                                    
-                                    <button 
-                                        onClick={() => handleDeleteClient(client.id, client.name)}
-                                        className="inline-flex items-center justify-center w-8 h-8 text-red-900/50 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all hover:scale-110 active:scale-95 border border-transparent hover:border-red-500/20"
-                                        title="Excluir Contrato"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
+                                    {filterStatus === 'approved' ? (
+                                        <>
+                                            <Link 
+                                                href={detailsLink}
+                                                className="inline-flex items-center justify-center w-8 h-8 text-gray-500 hover:text-white hover:bg-white/10 rounded-lg transition-all hover:scale-110 active:scale-95 border border-transparent hover:border-white/10"
+                                                title="Ver Detalhes"
+                                            >
+                                                <ChevronRight size={18} />
+                                            </Link>
+                                            
+                                            <button 
+                                                onClick={() => handleDeleteClient(client.id, client.name)}
+                                                className="inline-flex items-center justify-center w-8 h-8 text-red-900/50 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all hover:scale-110 active:scale-95 border border-transparent hover:border-red-500/20"
+                                                title="Excluir Contrato"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <div className="flex gap-2">
+                                            <button 
+                                                onClick={() => handleApprove(client.id, client.name)}
+                                                className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/30 rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
+                                            >
+                                                <CheckCircle size={14}/> Aprovar
+                                            </button>
+                                            <button 
+                                                onClick={() => handleReprove(client.id, client.name)}
+                                                className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
+                                            >
+                                                <XCircle size={14}/> Recusar
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </td>
                         </tr> 
