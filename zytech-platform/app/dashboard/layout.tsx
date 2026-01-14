@@ -4,11 +4,11 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
-import ApprovalGuard from '@/components/ApprovalGuard'
+import ApprovalGuard from '@/components/ApprovalGuard' 
 import { 
   LayoutDashboard, ShoppingBag, Users, Settings, LogOut, 
   Menu, X, Calendar, LifeBuoy, BarChart, DollarSign, Cpu,
-  Sparkles, ChevronRight, Home, Truck, ShoppingCart, Briefcase
+  Sparkles, ChevronRight, Home, Truck, Briefcase
 } from 'lucide-react'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -22,9 +22,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [orgId, setOrgId] = useState('')
 
   useEffect(() => {
-    async function fetchUiData() {
+    async function loadMenuData() {
         const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return 
+        if (!user) return
 
         const { data: profile } = await supabase
         .from('profiles')
@@ -42,7 +42,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             setBusinessType(org?.business_type || 'commerce')
         }
     }
-    fetchUiData()
+    loadMenuData()
   }, [])
 
   const handleLogout = async () => {
