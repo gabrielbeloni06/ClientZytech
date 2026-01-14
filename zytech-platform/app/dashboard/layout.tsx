@@ -27,7 +27,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   async function checkUser() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
-      router.replace('/login') 
+      router.replace('/') 
       return
     }
 
@@ -53,7 +53,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     document.cookie.split(";").forEach((c) => {
       document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
     });
-    window.location.href = '/login'
+    window.location.href = '/'
   }
 
   const getNavItems = () => {
