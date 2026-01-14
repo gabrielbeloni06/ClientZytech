@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ClientzyTech",
+  title: "Client Zytech",
   description: "Soluções inteligentes para o seu negócio",
   verification: {
     other: {
