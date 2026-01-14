@@ -25,24 +25,24 @@ export default function ClientsPage() {
 
   useEffect(() => {
     fetchClients()
-  }, [filterStatus])
+  }, [filterStatus]) 
 
   async function fetchClients() {
     setLoading(true)
     const { data } = await supabase
       .from('organizations')
       .select('*')
-      .neq('name', 'Zytech HQ')
-      .eq('approval_status', filterStatus) 
+      .neq('name', 'Zytech HQ') 
+      .eq('approval_status', filterStatus)
       .order('created_at', { ascending: false })
 
     if (data) setClients(data)
     setLoading(false)
   }
 
+
   async function handleApprove(id: string, name: string) {
-      const confirm = window.confirm(`Deseja aprovar e liberar o acesso para "${name}"?`);
-      if(!confirm) return;
+      if(!confirm(`Confirma a aprovação de "${name}"? O acesso será liberado imediatamente.`)) return;
 
       const { error } = await supabase
         .from('organizations')
@@ -51,14 +51,13 @@ export default function ClientsPage() {
       
       if(error) alert('Erro ao aprovar: ' + error.message);
       else {
-          setClients(prev => prev.filter(c => c.id !== id));
-          alert(`Cliente ${name} aprovado com sucesso!`);
+          setClients(prev => prev.filter(c => c.id !== id)); 
+          alert(`Cliente ${name} aprovado!`);
       }
   }
 
   async function handleReprove(id: string, name: string) {
-      const confirm = window.confirm(`Deseja REPROVAR o cadastro de "${name}"?\nIsso impedirá o acesso.`);
-      if(!confirm) return;
+      if(!confirm(`ATENÇÃO: Deseja REPROVAR "${name}"?\nO cliente verá uma tela de acesso negado.`)) return;
 
       const { error } = await supabase
         .from('organizations')
@@ -69,6 +68,22 @@ export default function ClientsPage() {
       else {
           setClients(prev => prev.filter(c => c.id !== id));
       }
+  }
+
+  async function handleDeleteClient(id: string, name: string) {
+    const confirmed = window.confirm(
+        `⚠️ PERIGO EXTREMO: Você vai apagar "${name}" e TODOS os dados (histórico, configs, leads).\n\nTem certeza absoluta?`
+    )
+    if (!confirmed) return
+
+    const { error } = await supabase.from('organizations').delete().eq('id', id)
+
+    if (error) {
+      alert('Erro ao excluir: ' + error.message)
+      fetchClients()
+    } else {
+      setClients(prev => prev.filter(c => c.id !== id))
+    }
   }
 
 
@@ -101,41 +116,17 @@ export default function ClientsPage() {
       }])
 
     if (error) {
-      alert('Erro ao criar cliente: ' + error.message)
+      alert('Erro ao criar: ' + error.message)
     } else {
       setIsModalOpen(false)
-      setNewClientName('')
-      setNewClientPlan('')
-      setNewClientValue('')
-      setNewClientCycle('mensal')
-      setNewClientType('commerce')
+      setNewClientName(''); setNewClientPlan(''); setNewClientValue(''); setNewClientType('commerce');
+      
       if (filterStatus === 'approved') fetchClients();
       else setFilterStatus('approved');
     }
     setIsSaving(false)
   }
 
-  async function handleDeleteClient(id: string, name: string) {
-    const confirmed = window.confirm(
-        `⚠️ PERIGO: Você tem certeza que deseja EXCLUIR o cliente "${name}"?\n\n` + 
-        `Essa ação é irreversível e apagará TODOS os dados vinculados (histórico, configurações, leads) do banco de dados.`
-    )
-
-    if (!confirmed) return
-
-
-    const { error } = await supabase
-      .from('organizations')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      alert('Erro ao excluir cliente. Verifique se existem dados vinculados que impedem a exclusão.\n\nErro: ' + error.message)
-      fetchClients()
-    } else {
-      setClients(prev => prev.filter(c => c.id !== id))
-    }
-  }
 
   const filteredClients = clients.filter(client => 
     client.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -148,8 +139,7 @@ export default function ClientsPage() {
     
     if (name.includes('start')) return 'bg-orange-500/10 text-orange-400 border-orange-500/20 shadow-[0_0_10px_rgba(249,115,22,0.1)]' 
     if (name.includes('control')) return 'bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.1)]' 
-    if (name.includes('botai') || name.includes('zyauto') || (name.includes('website') && name.includes('core'))) return 'bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.1)]'
-    if (name.includes('zycore')) return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.1)]' 
+    if (name.includes('botai') || name.includes('zyauto') || name.includes('core')) return 'bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.1)]'
     
     return 'bg-white/5 border-white/10 text-white'
   }
@@ -171,16 +161,10 @@ export default function ClientsPage() {
     if (current === plan) {
         if (plan.includes('Start')) colorClass = 'bg-orange-500/10 border-orange-500 text-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.2)]'
         else if (plan.includes('Control')) colorClass = 'bg-blue-500/10 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]'
-        else if (plan.includes('BotAI') || plan.includes('ZyAuto') || (plan.includes('Website') && plan.includes('Core'))) colorClass = 'bg-purple-500/10 border-purple-500 text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.2)]'
-        else if (plan.includes('ZyCore')) colorClass = 'bg-cyan-500/10 border-cyan-500 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.2)]'
+        else colorClass = 'bg-purple-500/10 border-purple-500 text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.2)]'
     }
-
     return (
-      <button
-        type="button"
-        onClick={() => set(plan)}
-        className={`py-2 px-3 rounded-lg border text-xs font-bold uppercase transition-all duration-300 ${colorClass}`}
-      >
+      <button type="button" onClick={() => set(plan)} className={`py-2 px-3 rounded-lg border text-xs font-bold uppercase transition-all duration-300 ${colorClass}`}>
         {plan}
       </button>
     )
@@ -291,6 +275,7 @@ export default function ClientsPage() {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/5 pb-6">
             <div>
                 <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">Gestão de Carteira</h2>
+                
                 <div className="flex items-center gap-6 mt-4">
                     <button 
                         onClick={() => setFilterStatus('approved')}
@@ -303,7 +288,7 @@ export default function ClientsPage() {
                         className={`text-sm font-bold pb-2 transition-all border-b-2 flex items-center gap-2 ${filterStatus === 'analysis' ? 'text-yellow-400 border-yellow-500' : 'text-gray-500 border-transparent hover:text-gray-300'}`}
                     >
                         Solicitações em Análise
-                        {filterStatus !== 'analysis' && <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>}
+                        {filterStatus === 'analysis' && <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>}
                     </button>
                 </div>
             </div>
@@ -341,7 +326,7 @@ export default function ClientsPage() {
                     {loading ? (
                     <tr><td colSpan={5} className="p-12 text-center text-gray-500 animate-pulse font-mono text-sm">Carregando carteira de clientes...</td></tr>
                     ) : filteredClients.length === 0 ? (
-                    <tr><td colSpan={5} className="p-12 text-center text-gray-500">Nenhuma empresa encontrada nesta aba.</td></tr>
+                    <tr><td colSpan={5} className="p-12 text-center text-gray-500">Nenhum contrato encontrado nesta aba.</td></tr>
                     ) : (
                     filteredClients.map((client) => {
                         const style = getTypeStyle(client.business_type)
@@ -350,6 +335,7 @@ export default function ClientsPage() {
 
                         return (
                         <tr key={client.id} className="hover:bg-white/[0.02] transition-colors group">
+
                             <td className="p-5">
                                 {filterStatus === 'approved' ? (
                                     <Link href={detailsLink} className="font-bold text-white hover:text-blue-400 transition-colors block text-base group-hover:translate-x-1 duration-300">

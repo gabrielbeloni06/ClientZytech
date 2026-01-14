@@ -5,7 +5,8 @@ import { supabase } from '@/lib/supabaseClient'
 import { useRouter } from 'next/navigation'
 import { 
     Mail, Lock, ArrowRight, Loader2, Sparkles, ShieldCheck, 
-    Briefcase, Truck, Home, ShoppingCart, ChevronLeft, CheckCircle, CreditCard, Globe, Cpu
+    Briefcase, Truck, Home, ShoppingCart, ChevronLeft, CheckCircle, CreditCard,
+    Tag
 } from 'lucide-react'
 
 export default function LoginPage() {
@@ -13,18 +14,39 @@ export default function LoginPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
+  const [fetchingPlans, setFetchingPlans] = useState(false)
+
+  const [plansList, setPlansList] = useState<any[]>([])
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+
   const [regName, setRegName] = useState('')
   const [regType, setRegType] = useState('') 
   const [regSubtype, setRegSubtype] = useState('') 
-  const [regPlan, setRegPlan] = useState('')
+  
+  const [regPlanId, setRegPlanId] = useState('') 
   const [regPayment, setRegPayment] = useState('pix')
 
   useEffect(() => {
-    const clearSession = async () => { await supabase.auth.signOut() }
-    clearSession()
+    const init = async () => {
+        await supabase.auth.signOut()
+        fetchPlans()
+    }
+    init()
   }, [])
+
+  async function fetchPlans() {
+      setFetchingPlans(true)
+      const { data } = await supabase
+        .from('plans')
+        .select('*')
+        .eq('active', true)
+        .order('price', { ascending: true })
+      
+      if (data) setPlansList(data)
+      setFetchingPlans(false)
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -52,17 +74,21 @@ export default function LoginPage() {
 
         let finalBusinessType = regType === 'delivery' ? 'delivery' : regSubtype;
         
+        const selectedPlan = plansList.find(p => p.id === regPlanId)
+        
+        if (!selectedPlan) throw new Error("Plano inválido selecionado.")
+
         const { data: orgData, error: orgError } = await supabase
             .from('organizations')
             .insert([{
                 name: regName,
                 business_type: finalBusinessType,
-                plan: regPlan,
+                plan: selectedPlan.name, 
                 payment_method: regPayment,
-                approval_status: 'analysis',
+                approval_status: 'analysis', 
                 status: 'active', 
                 subscription_cycle: 'mensal',
-                subscription_value: regPlan.includes('Start') ? 97 : regPlan.includes('Core') ? 297 : 197
+                subscription_value: selectedPlan.price 
             }])
             .select()
             .single()
@@ -185,43 +211,69 @@ export default function LoginPage() {
           <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                   <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">3</span>
-                  <h3 className="text-white font-bold text-lg">Plano e Ativação</h3>
+                  <h3 className="text-white font-bold text-lg">Escolha o Plano</h3>
               </div>
               <button onClick={() => setStep(2)} className="text-gray-500 hover:text-white text-xs flex items-center gap-1"><ChevronLeft size={12}/> Voltar</button>
           </div>
           
           <div>
-              <label className="text-xs text-gray-500 font-bold uppercase mb-2 block ml-1">Selecione o Plano</label>
-              <div className="space-y-2">
-                  {['ZyStart', 'ZyControl', 'ZyBotAI', 'ZyCore'].map(plan => (
-                      <button 
-                        key={plan}
-                        onClick={()=>setRegPlan(plan)}
-                        className={`w-full p-3 rounded-xl border text-left flex justify-between items-center transition-all ${regPlan === plan ? 'bg-blue-600/20 border-blue-500 text-white' : 'bg-white/5 border-transparent text-gray-400 hover:bg-white/10'}`}
-                      >
-                          <span className="text-sm font-bold">{plan}</span>
-                          {regPlan === plan && <CheckCircle size={16} className="text-blue-500"/>}
-                      </button>
-                  ))}
-              </div>
+              <label className="text-xs text-gray-500 font-bold uppercase mb-2 block ml-1">Planos Disponíveis</label>
+              
+              {fetchingPlans ? (
+                 <div className="text-center py-8 text-gray-500 text-sm animate-pulse"><Loader2 className="animate-spin mx-auto mb-2"/> Carregando planos...</div>
+              ) : (
+                  <div className="space-y-2 max-h-[220px] overflow-y-auto custom-scrollbar pr-1">
+                      {plansList.length === 0 ? (
+                          <div className="text-center py-4 bg-red-500/10 rounded-lg border border-red-500/20 text-red-400 text-xs">
+                              Nenhum plano cadastrado no sistema.
+                          </div>
+                      ) : (
+                          plansList.map(plan => (
+                              <button 
+                                  key={plan.id}
+                                  onClick={() => setRegPlanId(plan.id)} 
+                                  className={`w-full p-3 rounded-xl border text-left flex justify-between items-center transition-all duration-200 ${
+                                      regPlanId === plan.id 
+                                      ? 'bg-blue-600/20 border-blue-500 text-white shadow-lg shadow-blue-900/20' 
+                                      : 'bg-white/5 border-transparent text-gray-400 hover:bg-white/10 hover:text-white'
+                                  }`}
+                              >
+                                  <div className="flex flex-col items-start">
+                                      <span className="text-sm font-bold flex items-center gap-2">
+                                          <Tag size={12} className={regPlanId === plan.id ? 'text-blue-400' : 'text-gray-600'}/> 
+                                          {plan.name}
+                                      </span>
+                                      {plan.description && <span className="text-[10px] text-gray-500 line-clamp-1">{plan.description}</span>}
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                      <span className={`text-xs font-mono font-bold ${regPlanId === plan.id ? 'text-emerald-400' : 'text-gray-500'}`}>
+                                          R$ {Number(plan.price).toFixed(2)}
+                                      </span>
+                                      {regPlanId === plan.id && <CheckCircle size={16} className="text-blue-500"/>}
+                                  </div>
+                              </button>
+                          ))
+                      )}
+                  </div>
+              )}
           </div>
 
           <div>
-              <label className="text-xs text-gray-500 font-bold uppercase mb-2 block ml-1">Como prefere pagar?</label>
+              <label className="text-xs text-gray-500 font-bold uppercase mb-2 block ml-1">Pagamento</label>
               <div className="flex gap-3">
-                  <button onClick={()=>setRegPayment('pix')} className={`flex-1 p-3 rounded-lg border text-xs font-bold flex items-center justify-center gap-2 ${regPayment === 'pix' ? 'bg-green-500/20 border-green-500 text-green-400' : 'bg-white/5 border-transparent text-gray-400'}`}><Sparkles size={14}/> PIX</button>
-                  <button onClick={()=>setRegPayment('cartao')} className={`flex-1 p-3 rounded-lg border text-xs font-bold flex items-center justify-center gap-2 ${regPayment === 'cartao' ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-white/5 border-transparent text-gray-400'}`}><CreditCard size={14}/> Cartão</button>
+                  <button onClick={()=>setRegPayment('pix')} className={`flex-1 p-3 rounded-lg border text-xs font-bold flex items-center justify-center gap-2 transition-all ${regPayment === 'pix' ? 'bg-green-500/20 border-green-500 text-green-400' : 'bg-white/5 border-transparent text-gray-400'}`}><Sparkles size={14}/> PIX</button>
+                  <button onClick={()=>setRegPayment('cartao')} className={`flex-1 p-3 rounded-lg border text-xs font-bold flex items-center justify-center gap-2 transition-all ${regPayment === 'cartao' ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-white/5 border-transparent text-gray-400'}`}><CreditCard size={14}/> Cartão</button>
               </div>
           </div>
 
           <div className="bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-xl mt-4">
               <p className="text-yellow-500 text-xs flex gap-2 leading-relaxed">
-                  <ShieldCheck size={14} className="shrink-0"/> 
-                  <span>Após o cadastro, sua conta entrará em <strong>análise de segurança</strong>. Você será notificado assim que o acesso for liberado.</span>
+                  <ShieldCheck size={14} className="shrink-0 mt-0.5"/> 
+                  <span>Após o cadastro, sua conta entrará em <strong>análise</strong>. O acesso será liberado após a confirmação do pagamento.</span>
               </p>
           </div>
 
-          <button onClick={handleRegister} disabled={loading || !regPlan} className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white py-3.5 rounded-xl font-bold shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 disabled:opacity-50 mt-4 transition-all hover:scale-[1.02]">
+          <button onClick={handleRegister} disabled={loading || !regPlanId} className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white py-3.5 rounded-xl font-bold shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 disabled:opacity-50 mt-4 transition-all hover:scale-[1.02]">
               {loading ? <Loader2 className="animate-spin"/> : <CheckCircle size={18}/>} Finalizar Cadastro
           </button>
       </div>

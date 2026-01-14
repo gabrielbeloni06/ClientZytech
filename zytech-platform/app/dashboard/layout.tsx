@@ -8,7 +8,7 @@ import ApprovalGuard from '@/components/ApprovalGuard'
 import { 
   LayoutDashboard, ShoppingBag, Users, Settings, LogOut, 
   Menu, X, Calendar, LifeBuoy, BarChart, DollarSign, Cpu,
-  Sparkles, ChevronRight, Home, Truck, Briefcase
+  Sparkles, ChevronRight, Home, Truck, ShoppingCart, Briefcase, Tag
 } from 'lucide-react'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -55,6 +55,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       return [
         { name: 'Visão Geral', href: '/dashboard', icon: BarChart },
         { name: 'Gestão de Clientes', href: '/dashboard/clients', icon: Users },
+        { name: 'Planos & Preços', href: '/dashboard/plans', icon: Tag },
         { name: 'Financeiro', href: '/dashboard/finance', icon: DollarSign },
         { name: 'Sistema', href: '/dashboard/system', icon: Cpu },
         { name: 'Suporte', href: '/dashboard/support', icon: LifeBuoy },
@@ -100,7 +101,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             <div className="p-8 border-b border-white/5 flex items-center gap-4 relative z-10">
             <div className="relative w-12 h-12 rounded-2xl overflow-hidden shrink-0 border border-white/10 shadow-[0_0_15px_rgba(59,130,246,0.15)] group">
-                <Image src="/icon.jpg" alt="Logo" fill className="object-cover transition-transform duration-500 group-hover:scale-110" priority />
+                <Image 
+                src="/icon.jpg" 
+                alt="Logo" 
+                fill 
+                className="object-cover transition-transform duration-500 group-hover:scale-110" 
+                priority
+                />
             </div>
             <div className="flex flex-col">
                 <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-purple-400 to-blue-500 tracking-tight flex items-center gap-2">
