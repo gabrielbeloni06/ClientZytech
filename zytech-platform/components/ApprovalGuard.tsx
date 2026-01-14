@@ -14,37 +14,43 @@ export default function ApprovalGuard({ children }: { children: React.ReactNode 
   }, [])
 
   async function checkStatus() {
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    if (!user) {
-        setLoading(false)
-        return
-    }
+    try {
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (!user) {
+            router.push('/')
+            return
+        }
 
-    const { data: profile } = await supabase
-        .from('profiles')
-        .select('organization_id, role')
-        .eq('id', user.id)
-        .single()
-    
-    if (profile?.role === 'super_admin') {
-        setStatus('approved')
-        setLoading(false)
-        return
-    }
-
-    if (profile?.organization_id) {
-        const { data: org } = await supabase
-            .from('organizations')
-            .select('approval_status')
-            .eq('id', profile.organization_id)
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('organization_id, role')
+            .eq('id', user.id)
             .single()
         
-        setStatus(org?.approval_status || 'analysis')
-    } else {
-        setStatus('reproved') 
+        if (profile?.role === 'super_admin') {
+            setStatus('approved')
+            setLoading(false)
+            return
+        }
+
+        if (profile?.organization_id) {
+            const { data: org } = await supabase
+                .from('organizations')
+                .select('approval_status')
+                .eq('id', profile.organization_id)
+                .single()
+            
+            setStatus(org?.approval_status || 'analysis')
+        } else {
+            setStatus('reproved') 
+        }
+    } catch (e) {
+        console.error(e)
+        setStatus('analysis')
+    } finally {
+        setLoading(false)
     }
-    setLoading(false)
   }
 
   if (loading) {

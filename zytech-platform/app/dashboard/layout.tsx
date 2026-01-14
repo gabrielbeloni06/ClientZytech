@@ -15,44 +15,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter()
   const pathname = usePathname()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  
   const [role, setRole] = useState<string | null>(null)
   const [businessType, setBusinessType] = useState<string | null>(null)
   const [orgName, setOrgName] = useState('')
   const [orgId, setOrgId] = useState('')
 
   useEffect(() => {
-    checkUser()
+    async function fetchUiData() {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return 
+
+        const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, organization_id, organizations(name, business_type)')
+        .eq('id', user.id)
+        .single()
+
+        if (profile) {
+            const p = profile as any
+            const org = Array.isArray(p.organizations) ? p.organizations[0] : p.organizations
+            
+            setRole(p.role)
+            setOrgId(p.organization_id)
+            setOrgName(org?.name || 'Zytech')
+            setBusinessType(org?.business_type || 'commerce')
+        }
+    }
+    fetchUiData()
   }, [])
-
-  async function checkUser() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      router.replace('/') 
-      return
-    }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role, organization_id, organizations(name, business_type)')
-      .eq('id', user.id)
-      .single()
-
-    if (profile) {
-      const p = profile as any
-      const org = Array.isArray(p.organizations) ? p.organizations[0] : p.organizations
-      
-      setRole(p.role)
-      setOrgId(p.organization_id)
-      setOrgName(org?.name || 'Zytech')
-      setBusinessType(org?.business_type || 'commerce')
-    }
-  }
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    document.cookie.split(";").forEach((c) => {
-      document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-    });
     window.location.href = '/'
   }
 
@@ -92,7 +86,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
 
     items.push({ name: 'Ajuda', href: '/dashboard/support', icon: LifeBuoy })
-    
     return items
   }
 
@@ -107,13 +100,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             <div className="p-8 border-b border-white/5 flex items-center gap-4 relative z-10">
             <div className="relative w-12 h-12 rounded-2xl overflow-hidden shrink-0 border border-white/10 shadow-[0_0_15px_rgba(59,130,246,0.15)] group">
-                <Image 
-                src="/icon.jpg" 
-                alt="Logo" 
-                fill 
-                className="object-cover transition-transform duration-500 group-hover:scale-110" 
-                priority
-                />
+                <Image src="/icon.jpg" alt="Logo" fill className="object-cover transition-transform duration-500 group-hover:scale-110" priority />
             </div>
             <div className="flex flex-col">
                 <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-purple-400 to-blue-500 tracking-tight flex items-center gap-2">
@@ -130,15 +117,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {navItems.map((item) => {
                 const isActive = pathname === item.href
                 return (
-                <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`group flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-300 ${
-                    isActive 
-                        ? 'bg-blue-600/10 text-white border border-blue-500/20 shadow-[0_0_20px_-5px_rgba(59,130,246,0.3)]' 
-                        : 'text-gray-400 hover:bg-white/5 hover:text-gray-200 border border-transparent'
-                    }`}
-                >
+                <Link key={item.href} href={item.href} className={`group flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-300 ${isActive ? 'bg-blue-600/10 text-white border border-blue-500/20 shadow-[0_0_20px_-5px_rgba(59,130,246,0.3)]' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200 border border-transparent'}`}>
                     <div className="flex items-center gap-3">
                         <item.icon size={18} className={`transition-colors duration-300 ${isActive ? 'text-blue-400' : 'text-gray-500 group-hover:text-gray-300'}`} />
                         <span className="text-sm font-medium">{item.name}</span>
@@ -153,18 +132,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="bg-white/5 rounded-xl p-1 mb-3">
                 <div className="flex items-center gap-3 p-2">
                     <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center text-xs font-bold shrink-0 shadow-lg text-white">
-                    {orgName.charAt(0).toUpperCase()}
+                    {orgName ? orgName.charAt(0).toUpperCase() : 'Z'}
                     </div>
                     <div className="overflow-hidden">
-                    <p className="text-xs font-bold text-white truncate w-32">{orgName}</p>
+                    <p className="text-xs font-bold text-white truncate w-32">{orgName || 'Carregando...'}</p>
                     <p className="text-[10px] text-gray-400 truncate">{role === 'super_admin' ? 'Super Admin' : 'Admin'}</p>
                     </div>
                 </div>
             </div>
-            <button 
-                onClick={handleLogout} 
-                className="flex items-center justify-center gap-2 px-4 py-2.5 w-full text-xs font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all duration-200 border border-transparent hover:border-red-500/20 group"
-            >
+            <button onClick={handleLogout} className="flex items-center justify-center gap-2 px-4 py-2.5 w-full text-xs font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all duration-200 border border-transparent hover:border-red-500/20 group">
                 <LogOut size={14} className="group-hover:-translate-x-1 transition-transform" />
                 <span>DESCONECTAR</span>
             </button>
@@ -181,10 +157,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </div>
                 <span className="font-bold text-lg text-white tracking-tight">ZYTECH</span>
             </div>
-            <button 
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
-                className="p-2 text-gray-300 hover:bg-white/5 rounded-lg transition-colors"
-            >
+            <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-gray-300 hover:bg-white/5 rounded-lg transition-colors">
                 {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
             </header>
@@ -193,29 +166,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <div className="md:hidden absolute top-[70px] left-0 w-full bg-[#0a0a0a] border-b border-white/10 p-4 space-y-2 z-40 shadow-2xl backdrop-blur-xl animate-in slide-in-from-top-2">
                     <p className="px-2 py-1 text-[10px] font-bold text-gray-600 uppercase">Menu</p>
                     {navItems.map((item) => (
-                        <Link 
-                        key={item.href} 
-                        href={item.href} 
-                        onClick={() => setIsMobileMenuOpen(false)} 
-                        className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-blue-600/10 hover:text-blue-400 transition-colors"
-                        >
+                        <Link key={item.href} href={item.href} onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-blue-600/10 hover:text-blue-400 transition-colors">
                             <item.icon size={20} /> <span className="font-medium">{item.name}</span>
                         </Link>
                     ))}
                     <div className="h-px bg-white/10 my-2"></div>
-                    <div className="px-4 py-2 flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold text-white">
-                            {orgName.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="overflow-hidden">
-                            <p className="text-xs font-bold text-white truncate">{orgName}</p>
-                        </div>
-                    </div>
                     <button onClick={handleLogout} className="flex items-center gap-3 px-4 py-3 w-full text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
                         <LogOut size={20} /> <span className="font-medium">Sair</span>
                     </button>
                 </div>
             )}
+
             <div className="flex-1 overflow-auto p-4 md:p-8 lg:p-10 relative z-10 custom-scrollbar">
             <div className="max-w-7xl mx-auto w-full">
                 {children}
